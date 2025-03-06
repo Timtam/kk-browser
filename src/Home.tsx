@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Accordion from "react-bootstrap/Accordion"
 import Form from "react-bootstrap/Form"
 import slugify from "slugify"
+import { joinString } from "./utils"
 
 function Home() {
     const [loading, setLoading] = useState(true)
@@ -24,7 +25,16 @@ function Home() {
         <>
             <Accordion>
                 <Accordion.Item eventKey="vendors">
-                    <Accordion.Header as="p">Vendors</Accordion.Header>
+                    <Accordion.Header as="p">
+                        Vendors:{" "}
+                        {selectedVendors.length === 0
+                            ? "All"
+                            : joinString(
+                                  selectedVendors.sort(sorter),
+                                  ", ",
+                                  " and ",
+                              )}
+                    </Accordion.Header>
                     <Accordion.Body>
                         <div role="list" aria-label="Vendors">
                             {vendors!.sort(sorter).map((v, i) => (
