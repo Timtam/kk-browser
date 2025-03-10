@@ -6,18 +6,51 @@ import Form from "react-bootstrap/Form"
 import slugify from "slugify"
 import { joinString } from "./utils"
 
+const PAGE_SIZE = 50
+
+interface Preset {
+    name: string
+    comment: string
+    vendor: string
+    product: String
+    id: number
+}
+
 function Home() {
     const [loading, setLoading] = useState(true)
-    const [vendors, setVendors] = useState<String[]>([])
+    const [vendors, setVendors] = useState<string[]>([])
     const [selectedVendors, setSelectedVendors] = useState<string[]>([])
+    const [presets, setPresets] = useState<Preset[]>([])
+    const [selectedPreset, setSelectedPreset] = useState(0)
+    const [offset, setOffset] = useState(0)
     const sorter = useMemo(() => natsort(), [])
 
     useEffect(() => {
         ;(async () => {
             setVendors(await invoke("get_vendors"))
+            const p = (await invoke("get_presets", {
+                vendors: [],
+                offset: 0,
+                limit: PAGE_SIZE,
+            })) as Preset[]
+            setPresets(p)
+            setSelectedPreset(p[0].id)
             setLoading(false)
         })()
-    }, [setLoading, setVendors])
+    }, [setLoading, setPresets, setVendors])
+
+    useEffect(() => {
+        ;(async () => {
+            const p = (await invoke("get_presets", {
+                vendors: selectedVendors,
+                offset: 0,
+                limit: PAGE_SIZE,
+            })) as Preset[]
+            setOffset(0)
+            setSelectedPreset(p[0].id)
+            setPresets(p)
+        })()
+    }, [selectedVendors, setOffset, setPresets, setSelectedPreset])
 
     return loading ? (
         <p>Loading...</p>
@@ -63,6 +96,39 @@ function Home() {
                     </Accordion.Body>
                 </Accordion.Item>
             </Accordion>
+            <select
+                aria-label="Presets"
+                onChange={async (e) => {
+                    setSelectedPreset(parseInt(e.currentTarget.value, 10))
+                    if (
+                        presets.findIndex(
+                            (p) => p.id === parseInt(e.currentTarget.value, 10),
+                        ) >
+                        offset - 10
+                    ) {
+                        const p = (await invoke("get_presets", {
+                            vendors: selectedVendors,
+                            offset: offset,
+                            limit: PAGE_SIZE,
+                        })) as Preset[]
+                        setOffset(offset + p.length)
+                        setPresets((old_presets) => old_presets.concat(p))
+                    }
+                }}
+            >
+                {presets.map((p) => {
+                    return (
+                        <option
+                            key={p.id}
+                            selected={p.id === selectedPreset}
+                            id={p.id.toString()}
+                            value={p.id}
+                        >
+                            {`${p.name}, ${p.comment}, ${p.product}, ${p.vendor}`}
+                        </option>
+                    )
+                })}
+            </select>
         </>
     )
 }

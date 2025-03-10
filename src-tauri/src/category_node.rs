@@ -4,7 +4,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct CategoryNode {
     name: String,
     #[serde(serialize_with = "serialize_children")]
