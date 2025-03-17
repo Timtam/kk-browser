@@ -16,10 +16,18 @@ interface Preset {
     id: number
 }
 
+interface Product {
+    name: string
+    vendor: string
+    id: number
+}
+
 function Home() {
     const [loading, setLoading] = useState(true)
     const [vendors, setVendors] = useState<string[]>([])
     const [selectedVendors, setSelectedVendors] = useState<string[]>([])
+    const [products, setProducts] = useState<Product[]>([])
+    const [selectedProducts, setSelectedProducts] = useState<number[]>([])
     const [presets, setPresets] = useState<Preset[]>([])
     const [selectedPreset, setSelectedPreset] = useState(0)
     const [offset, setOffset] = useState(0)
@@ -28,8 +36,10 @@ function Home() {
     useEffect(() => {
         ;(async () => {
             setVendors(await invoke("get_vendors"))
+            setProducts(await invoke("get_products", { vendors: [] }))
             const p = (await invoke("get_presets", {
                 vendors: [],
+                products: [],
                 offset: 0,
                 limit: PAGE_SIZE,
             })) as Preset[]
@@ -37,12 +47,13 @@ function Home() {
             setSelectedPreset(p[0].id)
             setLoading(false)
         })()
-    }, [setLoading, setPresets, setVendors])
+    }, [setLoading, setPresets, setProducts, setVendors])
 
     useEffect(() => {
         ;(async () => {
             const p = (await invoke("get_presets", {
                 vendors: selectedVendors,
+                products: selectedProducts,
                 offset: 0,
                 limit: PAGE_SIZE,
             })) as Preset[]
@@ -50,7 +61,13 @@ function Home() {
             setSelectedPreset(p[0].id)
             setPresets(p)
         })()
-    }, [selectedVendors, setOffset, setPresets, setSelectedPreset])
+    }, [
+        selectedProducts,
+        selectedVendors,
+        setOffset,
+        setPresets,
+        setSelectedPreset,
+    ])
 
     return loading ? (
         <p>Loading...</p>
@@ -96,6 +113,56 @@ function Home() {
                     </Accordion.Body>
                 </Accordion.Item>
             </Accordion>
+            <Accordion>
+                <Accordion.Item eventKey="products">
+                    <Accordion.Header as="p">
+                        Products:{" "}
+                        {selectedProducts.length === 0
+                            ? "All"
+                            : joinString(
+                                  products
+                                      .filter((p) =>
+                                          selectedProducts.includes(p.id),
+                                      )
+                                      .map((p) => p.name)
+                                      .sort(sorter),
+                                  ", ",
+                                  " and ",
+                              )}
+                    </Accordion.Header>
+                    <Accordion.Body>
+                        <div role="list" aria-label="Products">
+                            {products!
+                                .map((p, i) => (
+                                    <div role="listitem">
+                                        <Form.Check
+                                            type="checkbox"
+                                            id={`${slugify(p.name)}-${i}`}
+                                            label={p.name}
+                                            checked={selectedProducts.includes(
+                                                p.id,
+                                            )}
+                                            onChange={() =>
+                                                selectedProducts.includes(p.id)
+                                                    ? setSelectedProducts(
+                                                          selectedProducts.filter(
+                                                              (p2) =>
+                                                                  p.id !==
+                                                                  p2.id,
+                                                          ),
+                                                      )
+                                                    : setSelectedProducts([
+                                                          ...selectedProducts,
+                                                          p.id,
+                                                      ])
+                                            }
+                                        />
+                                    </div>
+                                ))}
+                        </div>
+                    </Accordion.Body>
+                </Accordion.Item>
+            </Accordion>
             <select
                 aria-label="Presets"
                 onChange={async (e) => {
@@ -108,6 +175,7 @@ function Home() {
                     ) {
                         const p = (await invoke("get_presets", {
                             vendors: selectedVendors,
+                            products: selectedProducts,
                             offset: offset,
                             limit: PAGE_SIZE,
                         })) as Preset[]

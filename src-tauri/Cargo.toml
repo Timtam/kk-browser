@@ -23,8 +23,10 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 platform-dirs = "0.3.0"
-rusqlite = { version = "0.33.0", features = ["bundled"] }
+rusqlite = { version = "0.34.0", features = ["bundled"] }
 tauri-plugin-process = "2"
+rodio = { version = "0.20.1", default-features = false, features = ["vorbis"] }
+human-sort = "0.2.2"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
