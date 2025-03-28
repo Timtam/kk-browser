@@ -6,13 +6,18 @@ use category_node::CategoryNode;
 use platform_dirs::AppDirs;
 use preset::Preset;
 use product::Product;
+use rodio::{Decoder, OutputStreamBuilder, Sink};
 use rusqlite::{Connection, OpenFlags};
-use std::{collections::HashMap, path::PathBuf, sync::Mutex};
-use tauri::{Manager, State};
+use std::{collections::HashMap, fs::File, path::PathBuf, sync::Mutex};
+use tauri::{
+    Manager, State,
+    async_runtime::{Sender, channel, spawn_blocking},
+};
 
 struct AppState {
     db: Option<Connection>,
     categories: CategoryNode,
+    preview_sender: Sender<PathBuf>,
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -175,6 +180,45 @@ fn get_vendors(state: State<'_, Mutex<AppState>>) -> Vec<String> {
 }
 
 #[tauri::command]
+fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
+    let state = state.lock().unwrap();
+    let db = state.db.as_ref().unwrap();
+    let mut stmt = db
+        .prepare(&format!(
+            "SELECT file_name FROM k_sound_info WHERE id = {}",
+            preset
+        ))
+        .unwrap();
+    let mut rows = stmt.query([]).unwrap();
+
+    let patch_path = PathBuf::from(
+        &rows
+            .next()
+            .unwrap()
+            .unwrap()
+            .get::<usize, String>(0)
+            .unwrap(),
+    );
+
+    let preview_path: Option<PathBuf> = {
+        let p = patch_path
+            .parent()
+            .unwrap()
+            .join(".previews")
+            .join(format!(
+                "{}.ogg",
+                patch_path.file_name().unwrap().to_str().unwrap()
+            ));
+        if p.exists() { Some(p) } else { None }
+    };
+
+    if let Some(preview_path) = preview_path {
+
+        state.preview_sender.blocking_send(preview_path).unwrap();
+    }
+}
+
+#[tauri::command]
 fn db_found(state: State<'_, Mutex<AppState>>) -> bool {
     state.lock().unwrap().db.is_some()
 }
@@ -189,7 +233,8 @@ pub fn run() {
             get_categories,
             get_presets,
             get_products,
-            get_vendors
+            get_vendors,
+            play_preset,
         ])
         .setup(|app| {
             let db3_path: PathBuf = AppDirs::new(Some("Native Instruments"), true)
@@ -226,10 +271,30 @@ pub fn run() {
                 }
             }
 
+            let (sender, mut receiver) = channel::<PathBuf>(10);
+
             app.manage(Mutex::new(AppState {
                 db: conn,
                 categories,
+                preview_sender: sender,
             }));
+
+            spawn_blocking(move || {
+                let stream_handle = OutputStreamBuilder::open_default_stream().unwrap();
+                let mixer = stream_handle.mixer();
+                let sink = Sink::connect_new(mixer);
+
+                while let Some(path) = receiver.blocking_recv() {
+                    let file = File::open(path).unwrap();
+
+                    if !sink.empty() {
+                        sink.clear();
+                    }
+                    sink.append(Decoder::try_from(file).unwrap());
+                    sink.play();
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

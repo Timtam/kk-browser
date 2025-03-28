@@ -191,6 +191,9 @@ function Home() {
                 aria-label="Presets"
                 onChange={async (e) => {
                     setSelectedPreset(parseInt(e.currentTarget.value, 10))
+                    await invoke("play_preset", {
+                        preset: parseInt(e.currentTarget.value, 10),
+                    })
                     if (
                         presets.findIndex(
                             (p) => p.id === parseInt(e.currentTarget.value, 10),

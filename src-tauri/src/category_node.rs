@@ -1,4 +1,4 @@
-use serde::{ser::SerializeSeq, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeSeq};
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
