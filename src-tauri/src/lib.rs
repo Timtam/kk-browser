@@ -185,36 +185,78 @@ fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
     let db = state.db.as_ref().unwrap();
     let mut stmt = db
         .prepare(&format!(
-            "SELECT file_name FROM k_sound_info WHERE id = {}",
+            "SELECT file_name, content_path_id FROM k_sound_info WHERE id = {}",
             preset
         ))
         .unwrap();
     let mut rows = stmt.query([]).unwrap();
+    let row = rows.next().unwrap().unwrap();
 
-    let patch_path = PathBuf::from(
-        &rows
-            .next()
-            .unwrap()
-            .unwrap()
-            .get::<usize, String>(0)
-            .unwrap(),
-    );
+    let patch_path = PathBuf::from(&row.get::<usize, String>(0).unwrap());
 
     let preview_path: Option<PathBuf> = {
-        let p = patch_path
-            .parent()
-            .unwrap()
-            .join(".previews")
-            .join(format!(
-                "{}.ogg",
-                patch_path.file_name().unwrap().to_str().unwrap()
-            ));
-        if p.exists() { Some(p) } else { None }
+        let p = patch_path.parent().unwrap().join(".previews").join(format!(
+            "{}.ogg",
+            patch_path.file_name().unwrap().to_str().unwrap()
+        ));
+        if p.exists() {
+            Some(p)
+        } else {
+            // we need to search for the previews library by name instruments
+            let json_path: PathBuf = if cfg!(target_os = "macos") {
+                PathBuf::from(
+                    "/Users/Shared/Native Instruments/installed_products/Native Browser Preview Library.json",
+                )
+            } else {
+                PathBuf::from(
+                    "C:/Users/Public/Documents/Native Instruments/installed_products/Native Browser Preview Library.json",
+                )
+            };
+
+            if json_path.exists() {
+                let content_path_id = row.get::<usize, usize>(1).unwrap();
+
+                let file = File::open(json_path).unwrap();
+
+                let json: serde_json::Value = serde_json::from_reader(&file).unwrap();
+
+                let preview_content_dir = PathBuf::from(json["ContentDir"].as_str().unwrap());
+
+                let mut stmt = db
+                    .prepare(&format!(
+                        "SELECT path, upid FROM k_content_path WHERE id = {}",
+                        &content_path_id
+                    ))
+                    .unwrap();
+                let mut rows = stmt.query([]).unwrap();
+                let row = rows.next().unwrap().unwrap();
+
+                let content_dir = row.get::<usize, String>(0).unwrap();
+                let upid = row.get::<usize, String>(1).unwrap();
+
+                Some(
+                    preview_content_dir
+                        .join("Samples")
+                        .join(&upid)
+                        .join(patch_path.strip_prefix(content_dir).unwrap())
+                        .parent()
+                        .unwrap()
+                        .join(".previews")
+                        .join(format!(
+                            "{}.ogg",
+                            patch_path.file_name().unwrap().to_str().unwrap()
+                        )),
+                )
+            } else {
+                None
+            }
+        }
     };
 
     if let Some(preview_path) = preview_path {
-
-        state.preview_sender.blocking_send(preview_path).unwrap();
+        if preview_path.exists() {
+            state.preview_sender.blocking_send(preview_path).unwrap();
+        }
     }
 }
 
