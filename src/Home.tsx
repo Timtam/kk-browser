@@ -22,6 +22,13 @@ interface Product {
     id: number
 }
 
+interface PaginatedResult<T> {
+    results: T[]
+    total: number
+    start: number
+    end: number
+}
+
 function Home() {
     const [loading, setLoading] = useState(true)
     const [vendors, setVendors] = useState<string[]>([])
@@ -50,9 +57,9 @@ function Home() {
                 products: [],
                 offset: 0,
                 limit: PAGE_SIZE,
-            })) as Preset[]
-            setPresets(p)
-            setSelectedPreset(p[0].id)
+            })) as PaginatedResult<Preset>
+            setPresets(p.results)
+            setSelectedPreset(p.results[0].id)
             setLoading(false)
         })()
     }, [setLoading, setPresets, setProducts, setVendors])
@@ -73,10 +80,10 @@ function Home() {
                 products: selectedProducts,
                 offset: 0,
                 limit: PAGE_SIZE,
-            })) as Preset[]
+            })) as PaginatedResult<Preset>
             setOffset(0)
-            setSelectedPreset(p[0].id)
-            setPresets(p)
+            setSelectedPreset(p.results[0].id)
+            setPresets(p.results)
         })()
     }, [
         selectedProducts,
@@ -190,24 +197,22 @@ function Home() {
             <select
                 aria-label="Presets"
                 onChange={async (e) => {
-                    setSelectedPreset(parseInt(e.currentTarget.value, 10))
+                    let id = parseInt(e.currentTarget.value, 10)
+                    setSelectedPreset(id)
                     await invoke("play_preset", {
-                        preset: parseInt(e.currentTarget.value, 10),
+                        preset: id,
                     })
-                    if (
-                        presets.findIndex(
-                            (p) => p.id === parseInt(e.currentTarget.value, 10),
-                        ) >
-                        offset - 10
-                    ) {
+                    if (presets.findIndex((p) => p.id === id) > offset - 10) {
                         const p = (await invoke("get_presets", {
                             vendors: selectedVendors,
                             products: selectedProducts,
                             offset: offset,
                             limit: PAGE_SIZE,
-                        })) as Preset[]
-                        setOffset(offset + p.length)
-                        setPresets((old_presets) => old_presets.concat(p))
+                        })) as PaginatedResult<Preset>
+                        setOffset(offset + p.results.length)
+                        setPresets((old_presets) =>
+                            old_presets.concat(p.results),
+                        )
                     }
                 }}
             >

@@ -1,8 +1,11 @@
 use human_sort::compare;
 use serde::Serialize;
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    hash::{Hash, Hasher},
+};
 
-#[derive(Clone, Hash, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Product {
     pub id: usize,
     pub name: String,
@@ -26,5 +29,11 @@ impl Eq for Product {}
 impl PartialEq for Product {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+}
+
+impl Hash for Product {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }

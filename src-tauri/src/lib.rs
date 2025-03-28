@@ -1,8 +1,10 @@
 mod category_node;
+mod paginated_result;
 mod preset;
 mod product;
 
 use category_node::CategoryNode;
+use paginated_result::PaginatedResult;
 use platform_dirs::AppDirs;
 use preset::Preset;
 use product::Product;
@@ -34,10 +36,14 @@ fn get_presets(
     products: Vec<usize>,
     offset: usize,
     limit: usize,
-) -> Vec<Preset> {
+) -> PaginatedResult<Preset> {
     let mut cmd: String = "\
-SELECT k_sound_info.id, k_sound_info.name, k_sound_info.vendor, \
-       k_sound_info.comment, k_content_path.alias \
+SELECT \
+    k_sound_info.id, \
+    k_sound_info.name, \
+    k_sound_info.vendor, \
+    k_sound_info.comment, \
+    k_content_path.alias \
 FROM k_sound_info \
 INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
         .into();
@@ -65,18 +71,47 @@ INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
         ));
     }
 
-    if !where_clauses.is_empty() {
-        cmd.push_str(&format!(" WHERE {}", where_clauses.join(" AND ")));
-    }
+    let where_cmd: String = if !where_clauses.is_empty() {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    } else {
+        "".into()
+    };
 
-    cmd.push_str(&format!(
-        " ORDER BY name ASC LIMIT {} OFFSET {}",
-        limit, offset
-    ));
+    let limit_cmd: String = format!("ORDER BY name ASC LIMIT {} OFFSET {}", limit, offset);
 
     let state = state.lock().unwrap();
     let db = state.db.as_ref().unwrap();
-    let mut stmt = db.prepare(&cmd).unwrap();
+
+    // fetch total amount of presets first
+    let mut total_cmd: String = "\
+SELECT \
+    COUNT(*) \
+FROM k_sound_info \
+INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
+        .into();
+
+    if !where_cmd.is_empty() {
+        total_cmd.push_str(&format!(" {}", &where_cmd));
+        cmd.push_str(&format!(" {}", &where_cmd));
+    }
+
+    cmd.push_str(&format!(" {}", &limit_cmd));
+
+    let mut stmt = db.prepare(&total_cmd).unwrap();
+
+    let mut rows = stmt.query([]).unwrap();
+    let total = rows
+        .next()
+        .unwrap()
+        .unwrap()
+        .get::<usize, usize>(0)
+        .unwrap();
+
+    drop(rows);
+
+    // fetch actual results
+
+    stmt = db.prepare(&cmd).unwrap();
 
     let presets = stmt
         .query_map([], |row| {
@@ -92,7 +127,15 @@ INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
         .filter_map(|p| p.ok())
         .collect::<Vec<_>>();
 
-    presets
+    let start = offset + 1;
+    let end = offset + presets.len();
+
+    PaginatedResult {
+        results: presets,
+        start,
+        end,
+        total,
+    }
 }
 
 #[tauri::command]
