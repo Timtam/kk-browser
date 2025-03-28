@@ -232,21 +232,23 @@ fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
                 let row = rows.next().unwrap().unwrap();
 
                 let content_dir = row.get::<usize, String>(0).unwrap();
-                let upid = row.get::<usize, String>(1).unwrap();
-
-                Some(
-                    preview_content_dir
-                        .join("Samples")
-                        .join(&upid)
-                        .join(patch_path.strip_prefix(content_dir).unwrap())
-                        .parent()
-                        .unwrap()
-                        .join(".previews")
-                        .join(format!(
-                            "{}.ogg",
-                            patch_path.file_name().unwrap().to_str().unwrap()
-                        )),
-                )
+                if let Ok(upid) = row.get::<usize, String>(1) {
+                    Some(
+                        preview_content_dir
+                            .join("Samples")
+                            .join(&upid)
+                            .join(patch_path.strip_prefix(content_dir).unwrap())
+                            .parent()
+                            .unwrap()
+                            .join(".previews")
+                            .join(format!(
+                                "{}.ogg",
+                                patch_path.file_name().unwrap().to_str().unwrap()
+                            )),
+                    )
+                } else {
+                    None
+                }
             } else {
                 None
             }
