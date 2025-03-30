@@ -108,23 +108,18 @@ fn get_vendors(state: State<'_, Mutex<AppState>>) -> Vec<String> {
 #[tauri::command]
 fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
     let state = state.lock().unwrap();
-    let db = state.db.as_ref().unwrap();
-    let mut stmt = db
-        .prepare(&format!(
-            "SELECT file_name, content_path_id FROM k_sound_info WHERE id = {}",
-            preset
-        ))
-        .unwrap();
-    let mut rows = stmt.query([]).unwrap();
-    let row = rows.next().unwrap().unwrap();
-
-    let patch_path = PathBuf::from(&row.get::<usize, String>(0).unwrap());
+    let preset = state.presets.get(&preset).unwrap();
 
     let preview_path: Option<PathBuf> = {
-        let p = patch_path.parent().unwrap().join(".previews").join(format!(
-            "{}.ogg",
-            patch_path.file_name().unwrap().to_str().unwrap()
-        ));
+        let p = preset
+            .file_name
+            .parent()
+            .unwrap()
+            .join(".previews")
+            .join(format!(
+                "{}.ogg",
+                preset.file_name.file_name().unwrap().to_str().unwrap()
+            ));
         if p.exists() {
             Some(p)
         } else {
@@ -140,36 +135,26 @@ fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
             };
 
             if json_path.exists() {
-                let content_path_id = row.get::<usize, usize>(1).unwrap();
-
                 let file = File::open(json_path).unwrap();
 
                 let json: serde_json::Value = serde_json::from_reader(&file).unwrap();
 
                 let preview_content_dir = PathBuf::from(json["ContentDir"].as_str().unwrap());
 
-                let mut stmt = db
-                    .prepare(&format!(
-                        "SELECT path, upid FROM k_content_path WHERE id = {}",
-                        &content_path_id
-                    ))
-                    .unwrap();
-                let mut rows = stmt.query([]).unwrap();
-                let row = rows.next().unwrap().unwrap();
+                let product = state.products.get(&preset.product_id).unwrap();
 
-                let content_dir = row.get::<usize, String>(0).unwrap();
-                if let Ok(upid) = row.get::<usize, String>(1) {
+                if !product.upid.is_empty() {
                     Some(
                         preview_content_dir
                             .join("Samples")
-                            .join(&upid)
-                            .join(patch_path.strip_prefix(content_dir).unwrap())
+                            .join(&product.upid)
+                            .join(preset.file_name.strip_prefix(&product.content_dir).unwrap())
                             .parent()
                             .unwrap()
                             .join(".previews")
                             .join(format!(
                                 "{}.ogg",
-                                patch_path.file_name().unwrap().to_str().unwrap()
+                                preset.file_name.file_name().unwrap().to_str().unwrap()
                             )),
                     )
                 } else {
@@ -305,7 +290,7 @@ SELECT DISTINCT content_path_id, vendor FROM k_sound_info"
             if let Some(ref conn) = conn {
                 let cmd: String = "\
 SELECT \
-    id, name, vendor, comment, content_path_id \
+    id, name, vendor, comment, content_path_id, file_name \
 FROM k_sound_info"
                     .into();
 
@@ -324,6 +309,7 @@ FROM k_sound_info"
                                 .unwrap()
                                 .name
                                 .clone(),
+                            file_name: PathBuf::from(&row.get::<usize, String>(5).unwrap()),
                         })
                     })
                     .unwrap()

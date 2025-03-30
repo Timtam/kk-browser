@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
+    path::PathBuf,
 };
 
 #[derive(Clone, Serialize)]
@@ -14,6 +15,8 @@ pub struct Preset {
     pub product_id: ProductKey,
     pub product_name: String,
     pub id: usize,
+    #[serde(skip)]
+    pub file_name: PathBuf,
 }
 
 impl Ord for Preset {
