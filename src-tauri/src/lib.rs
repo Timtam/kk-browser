@@ -4,10 +4,12 @@ mod preset;
 mod product;
 
 use category_node::CategoryNode;
+use multi_key_map::MultiKeyMap;
+use ordered_hash_map::OrderedHashMap;
 use paginated_result::PaginatedResult;
 use platform_dirs::AppDirs;
 use preset::Preset;
-use product::Product;
+use product::{Product, ProductKey};
 use rodio::{Decoder, OutputStreamBuilder, Sink};
 use rusqlite::{Connection, OpenFlags};
 use std::{collections::HashMap, fs::File, path::PathBuf, sync::Mutex};
@@ -19,6 +21,8 @@ use tauri::{
 struct AppState {
     db: Option<Connection>,
     categories: CategoryNode,
+    products: MultiKeyMap<ProductKey, Product>,
+    presets: OrderedHashMap<usize, Preset>,
     preview_sender: Sender<PathBuf>,
 }
 
@@ -30,182 +34,61 @@ fn get_categories(state: State<'_, Mutex<AppState>>) -> CategoryNode {
 }
 
 #[tauri::command]
-fn get_presets(
+async fn get_presets(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     products: Vec<usize>,
     offset: usize,
     limit: usize,
-) -> PaginatedResult<Preset> {
-    let mut cmd: String = "\
-SELECT \
-    k_sound_info.id, \
-    k_sound_info.name, \
-    k_sound_info.vendor, \
-    k_sound_info.comment, \
-    k_content_path.alias \
-FROM k_sound_info \
-INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
-        .into();
-    let mut where_clauses: Vec<String> = vec![];
-
-    if !vendors.is_empty() {
-        where_clauses.push(format!(
-            "k_sound_info.vendor IN ({})",
-            vendors
-                .into_iter()
-                .map(|v| format!("'{}'", v))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-
-    if !products.is_empty() {
-        where_clauses.push(format!(
-            "k_content_path.id IN ({})",
-            products
-                .into_iter()
-                .map(|v| format!("{}", v))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-
-    let where_cmd: String = if !where_clauses.is_empty() {
-        format!("WHERE {}", where_clauses.join(" AND "))
-    } else {
-        "".into()
-    };
-
-    let limit_cmd: String = format!("ORDER BY name ASC LIMIT {} OFFSET {}", limit, offset);
-
+) -> Result<PaginatedResult<Preset>, ()> {
+    let products: Vec<ProductKey> = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
     let state = state.lock().unwrap();
-    let db = state.db.as_ref().unwrap();
 
-    // fetch total amount of presets first
-    let mut total_cmd: String = "\
-SELECT \
-    COUNT(*) \
-FROM k_sound_info \
-INNER JOIN k_content_path ON k_sound_info.content_path_id = k_content_path.id"
-        .into();
-
-    if !where_cmd.is_empty() {
-        total_cmd.push_str(&format!(" {}", &where_cmd));
-        cmd.push_str(&format!(" {}", &where_cmd));
-    }
-
-    cmd.push_str(&format!(" {}", &limit_cmd));
-
-    let mut stmt = db.prepare(&total_cmd).unwrap();
-
-    let mut rows = stmt.query([]).unwrap();
-    let total = rows
-        .next()
-        .unwrap()
-        .unwrap()
-        .get::<usize, usize>(0)
-        .unwrap();
-
-    drop(rows);
-
-    // fetch actual results
-
-    stmt = db.prepare(&cmd).unwrap();
-
-    let presets = stmt
-        .query_map([], |row| {
-            Ok(Preset {
-                id: row.get::<usize, usize>(0).unwrap(),
-                name: row.get::<usize, String>(1).unwrap_or("".into()),
-                vendor: row.get::<usize, String>(2).unwrap_or("".into()),
-                comment: row.get::<usize, String>(3).unwrap_or("".into()),
-                product: row.get::<usize, String>(4).unwrap_or("".into()),
-            })
+    let presets: Vec<Preset> = state
+        .presets
+        .values()
+        .filter(|p| {
+            (vendors.is_empty() || vendors.contains(&p.vendor))
+                && (products.is_empty() || products.contains(&p.product_id))
         })
-        .unwrap()
-        .filter_map(|p| p.ok())
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let results = presets
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .cloned()
         .collect::<Vec<_>>();
 
     let start = offset + 1;
-    let end = offset + presets.len();
+    let end = offset + results.len();
 
-    PaginatedResult {
-        results: presets,
+    Ok(PaginatedResult {
+        results,
         start,
         end,
-        total,
-    }
+        total: presets.len(),
+    })
 }
 
 #[tauri::command]
-fn get_products(state: State<'_, Mutex<AppState>>, vendors: Vec<String>) -> Vec<Product> {
+async fn get_products(
+    state: State<'_, Mutex<AppState>>,
+    vendors: Vec<String>,
+) -> Result<Vec<Product>, ()> {
     let state = state.lock().unwrap();
-    let db = state.db.as_ref().unwrap();
-    let mut map: HashMap<usize, String> = HashMap::new();
-    let mut stmt = db
-        .prepare(
-            "\
-SELECT id, alias FROM k_content_path \
-WHERE alias != '' AND content_type = 2
-",
-        )
-        .unwrap();
 
-    let mut rows = stmt.query([]).unwrap();
-
-    while let Some(row) = rows.next().unwrap() {
-        map.insert(
-            row.get::<usize, usize>(0).unwrap(),
-            row.get::<usize, String>(1).unwrap(),
-        );
-    }
-
-    drop(rows);
-
-    let mut cmd: String = "\
-SELECT DISTINCT content_path_id, vendor FROM k_sound_info \
-WHERE vendor != ''"
-        .into();
-
-    if !vendors.is_empty() {
-        cmd.push_str(&format!(
-            " AND vendor IN ({})",
-            vendors
-                .into_iter()
-                .map(|v| format!("'{}'", v))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-
-    stmt = db.prepare(&cmd).unwrap();
-
-    let mut rows = stmt.query([]).unwrap();
-    let mut p: HashMap<usize, Product> = HashMap::new();
-
-    while let Some(row) = rows.next().unwrap() {
-        let id = row.get::<usize, usize>(0).unwrap();
-
-        if !map.contains_key(&id) || p.contains_key(&id) {
-            continue;
-        }
-
-        p.insert(
-            id,
-            Product {
-                id,
-                name: map.get(&id).unwrap().clone(),
-                vendor: row.get::<usize, String>(1).unwrap(),
-            },
-        );
-    }
-
-    let mut p: Vec<Product> = p.into_values().collect::<Vec<_>>();
+    let mut p: Vec<Product> = state
+        .products
+        .values()
+        .filter(|p| vendors.is_empty() || vendors.contains(&p.vendor))
+        .cloned()
+        .collect::<Vec<_>>();
 
     p.sort();
 
-    p
+    Ok(p)
 }
 
 #[tauri::command]
@@ -358,11 +241,109 @@ pub fn run() {
                 }
             }
 
+            let mut products: MultiKeyMap<ProductKey, Product> = MultiKeyMap::new();
+
+            if let Some(ref conn) = conn {
+                let mut map: HashMap<usize, (String, String, String)> = HashMap::new();
+                let mut stmt = conn
+                    .prepare(
+                        "\
+SELECT id, path, alias, upid FROM k_content_path",
+                    )
+                    .unwrap();
+
+                let mut rows = stmt.query([]).unwrap();
+
+                while let Some(row) = rows.next().unwrap() {
+                    map.insert(
+                        row.get::<usize, usize>(0).unwrap(),
+                        (
+                            row.get::<usize, String>(1).unwrap(),
+                            row.get::<usize, String>(2).unwrap_or("".into()),
+                            row.get::<usize, String>(3).unwrap_or("".into()),
+                        ),
+                    );
+                }
+
+                drop(rows);
+
+                let cmd: String = "\
+SELECT DISTINCT content_path_id, vendor FROM k_sound_info"
+                    .into();
+
+                stmt = conn.prepare(&cmd).unwrap();
+
+                let mut rows = stmt.query([]).unwrap();
+
+                while let Some(row) = rows.next().unwrap() {
+                    let id = row.get::<usize, usize>(0).unwrap();
+
+                    if !map.contains_key(&id) || products.contains_key(&ProductKey::Id(id)) {
+                        continue;
+                    }
+
+                    let keys: Vec<ProductKey> = match map.get(&id).unwrap().2.as_str() {
+                        "" => vec![ProductKey::Id(id)],
+                        other => vec![ProductKey::Id(id), ProductKey::Upid(other.to_string())],
+                    };
+
+                    products.insert_many(
+                        keys,
+                        Product {
+                            id,
+                            name: map.get(&id).unwrap().1.clone(),
+                            vendor: row.get::<usize, String>(1).unwrap_or("".into()),
+                            content_dir: map.get(&id).unwrap().0.clone(),
+                            upid: map.get(&id).unwrap().2.clone(),
+                        },
+                    );
+                }
+            }
+
+            let mut presets: OrderedHashMap<usize, Preset> = OrderedHashMap::new();
+
+            if let Some(ref conn) = conn {
+                let cmd: String = "\
+SELECT \
+    id, name, vendor, comment, content_path_id \
+FROM k_sound_info"
+                    .into();
+
+                let mut stmt = conn.prepare(&cmd).unwrap();
+
+                let mut p: Vec<Preset> = stmt
+                    .query_map([], |row| {
+                        Ok(Preset {
+                            id: row.get::<usize, usize>(0).unwrap(),
+                            name: row.get::<usize, String>(1).unwrap_or("".into()),
+                            vendor: row.get::<usize, String>(2).unwrap_or("".into()),
+                            comment: row.get::<usize, String>(3).unwrap_or("".into()),
+                            product_id: ProductKey::Id(row.get::<usize, usize>(4).unwrap()),
+                            product_name: products
+                                .get(&ProductKey::Id(row.get::<usize, usize>(4).unwrap()))
+                                .unwrap()
+                                .name
+                                .clone(),
+                        })
+                    })
+                    .unwrap()
+                    .filter_map(|p| p.ok())
+                    .collect::<Vec<_>>();
+
+                p.sort();
+
+                p.into_iter().for_each(|p| {
+                    presets.insert(p.id, p);
+                });
+            }
+
             let (sender, mut receiver) = channel::<PathBuf>(10);
 
             app.manage(Mutex::new(AppState {
                 db: conn,
                 categories,
+                products,
+                presets,
                 preview_sender: sender,
             }));
 

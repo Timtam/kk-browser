@@ -21,6 +21,8 @@
         "react-dom": "^19.0.0",
         "react-router": "^7.2.0",
         "react-router-dom": "^7.2.0",
+        "react-select": "^5.10.1",
+        "react-select-async-paginate": "^0.7.9",
         "slugify": "^1.6.6"
     },
     "devDependencies": {

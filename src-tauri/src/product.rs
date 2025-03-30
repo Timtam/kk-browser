@@ -1,20 +1,29 @@
-use human_sort::compare;
 use serde::Serialize;
 use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
 };
 
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub enum ProductKey {
+    Id(usize),
+    Upid(String),
+}
+
 #[derive(Clone, Serialize)]
 pub struct Product {
     pub id: usize,
     pub name: String,
+    #[serde(skip)]
+    pub content_dir: String,
     pub vendor: String,
+    #[serde(skip)]
+    pub upid: String,
 }
 
 impl Ord for Product {
     fn cmp(&self, other: &Self) -> Ordering {
-        compare(&self.name, &other.name)
+        natord::compare_ignore_case(&self.name, &other.name)
     }
 }
 

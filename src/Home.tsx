@@ -3,16 +3,17 @@ import natsort from "natsort"
 import { useEffect, useMemo, useState } from "react"
 import Accordion from "react-bootstrap/Accordion"
 import Form from "react-bootstrap/Form"
+import { AsyncPaginate as Select } from "react-select-async-paginate"
 import slugify from "slugify"
 import { joinString } from "./utils"
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 500
 
 interface Preset {
     name: string
     comment: string
     vendor: string
-    product: String
+    product_name: String
     id: number
 }
 
@@ -29,70 +30,45 @@ interface PaginatedResult<T> {
     end: number
 }
 
+interface PresetOption extends Preset {
+    label: string
+}
+
 function Home() {
     const [loading, setLoading] = useState(true)
     const [vendors, setVendors] = useState<string[]>([])
     const [selectedVendors, setSelectedVendors] = useState<string[]>([])
     const [products, setProducts] = useState<Map<number, Product>>(new Map())
     const [selectedProducts, setSelectedProducts] = useState<number[]>([])
-    const [presets, setPresets] = useState<Preset[]>([])
-    const [selectedPreset, setSelectedPreset] = useState(0)
-    const [offset, setOffset] = useState(0)
     const sorter = useMemo(natsort, [])
+    const [preset, setSelectedPreset] = useState<PresetOption | undefined>(
+        undefined,
+    )
 
     useEffect(() => {
         ;(async () => {
-            setVendors(await invoke("get_vendors"))
-            setProducts(
-                new Map(
-                    (
-                        (await invoke("get_products", {
-                            vendors: [],
-                        })) as Product[]
-                    ).map((p) => [p.id, p]),
-                ),
-            )
-            const p = (await invoke("get_presets", {
-                vendors: [],
-                products: [],
-                offset: 0,
-                limit: PAGE_SIZE,
-            })) as PaginatedResult<Preset>
-            setPresets(p.results)
-            setSelectedPreset(p.results[0].id)
-            setLoading(false)
+            if (loading) {
+                setVendors(await invoke("get_vendors"))
+                setLoading(false)
+            }
         })()
-    }, [setLoading, setPresets, setProducts, setVendors])
+    }, [loading, setLoading, setVendors])
 
     useEffect(() => {
         ;(async () => {
-            setProducts(
-                new Map(
-                    (
-                        (await invoke("get_products", {
-                            vendors: selectedVendors,
-                        })) as Product[]
-                    ).map((p) => [p.id, p]),
-                ),
-            )
-            const p = (await invoke("get_presets", {
-                vendors: selectedVendors,
-                products: selectedProducts,
-                offset: 0,
-                limit: PAGE_SIZE,
-            })) as PaginatedResult<Preset>
-            setOffset(0)
-            setSelectedPreset(p.results[0].id)
-            setPresets(p.results)
+            if (!loading) {
+                setProducts(
+                    new Map(
+                        (
+                            (await invoke("get_products", {
+                                vendors: selectedVendors,
+                            })) as Product[]
+                        ).map((p) => [p.id, p]),
+                    ),
+                )
+            }
         })()
-    }, [
-        selectedProducts,
-        selectedVendors,
-        setOffset,
-        setPresets,
-        setProducts,
-        setSelectedPreset,
-    ])
+    }, [loading, selectedVendors, setProducts])
 
     return loading ? (
         <p>Loading...</p>
@@ -127,6 +103,7 @@ function Home() {
                                         <Form.Check
                                             type="checkbox"
                                             id={`${slugify(v)}-${i}`}
+                                            key={`${slugify(v)}-${i}`}
                                             label={v}
                                             checked={selectedVendors.includes(
                                                 v,
@@ -194,41 +171,38 @@ function Home() {
                     </Accordion.Body>
                 </Accordion.Item>
             </Accordion>
-            <select
-                aria-label="Presets"
-                onChange={async (e) => {
-                    let id = parseInt(e.currentTarget.value, 10)
-                    setSelectedPreset(id)
-                    await invoke("play_preset", {
-                        preset: id,
-                    })
-                    if (presets.findIndex((p) => p.id === id) > offset - 10) {
-                        const p = (await invoke("get_presets", {
-                            vendors: selectedVendors,
-                            products: selectedProducts,
-                            offset: offset,
-                            limit: PAGE_SIZE,
-                        })) as PaginatedResult<Preset>
-                        setOffset(offset + p.results.length)
-                        setPresets((old_presets) =>
-                            old_presets.concat(p.results),
-                        )
+            <Select
+                closeMenuOnSelect={false}
+cacheUniqs={[selectedProducts, selectedVendors]}
+                value={preset}
+                isMulti={false}
+                isSearchable={true}
+                loadOptions={async (_: string, loadedOptions) => {
+                    let res = (await invoke("get_presets", {
+                        vendors: selectedVendors,
+                        products: selectedProducts,
+                        offset: loadedOptions.length,
+                        limit: PAGE_SIZE,
+                    })) as PaginatedResult<Preset>
+
+                    return {
+                        options: res.results.map((p) => ({
+                            ...p,
+                            label: `${p.name}, ${p.comment}, ${p.product_name}`,
+                        })),
+                        hasMore: res.total > res.end,
                     }
                 }}
-            >
-                {presets.map((p) => {
-                    return (
-                        <option
-                            key={p.id}
-                            selected={p.id === selectedPreset}
-                            id={p.id.toString()}
-                            value={p.id}
-                        >
-                            {`${p.name}, ${p.comment}, ${p.product}, ${p.vendor}`}
-                        </option>
-                    )
-                })}
-            </select>
+                aria-label="Presets"
+                onChange={(o) => {
+                    ;(async () => {
+                        setSelectedPreset(o!)
+                        await invoke("play_preset", {
+                            preset: o!.id,
+                        })
+                    })()
+                }}
+            />
         </>
     )
 }

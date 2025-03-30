@@ -25,8 +25,10 @@ serde_json = "1"
 platform-dirs = "0.3.0"
 rusqlite = { version = "0.34.0", features = ["bundled"] }
 tauri-plugin-process = "2"
-human-sort = "0.2.2"
 rodio = { git = "https://github.com/RustAudio/rodio.git", default-features = false, features = ["playback", "vorbis", "symphonia"] }
+multi_key_map = "0.3.0"
+natord = "1.0.9"
+ordered_hash_map = "0.4.0"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
