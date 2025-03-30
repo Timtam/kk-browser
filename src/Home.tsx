@@ -48,6 +48,13 @@ function Home() {
     useEffect(() => {
         ;(async () => {
             if (loading) {
+                let server_loading = true
+
+                while (server_loading) {
+                    server_loading = await invoke("is_loading")
+                    if (server_loading)
+                        await new Promise((r) => setTimeout(r, 100))
+                }
                 setVendors(await invoke("get_vendors"))
                 setLoading(false)
             }
@@ -71,7 +78,7 @@ function Home() {
     }, [loading, selectedVendors, setProducts])
 
     return loading ? (
-        <p>Loading...</p>
+        <p>Loading Komplete Kontrol data, please wait...</p>
     ) : (
         <>
             <Accordion>
@@ -173,7 +180,7 @@ function Home() {
             </Accordion>
             <Select
                 closeMenuOnSelect={false}
-cacheUniqs={[selectedProducts, selectedVendors]}
+                cacheUniqs={[selectedProducts, selectedVendors]}
                 value={preset}
                 isMulti={false}
                 isSearchable={true}
