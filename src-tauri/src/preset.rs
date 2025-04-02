@@ -2,6 +2,7 @@ use crate::product::ProductKey;
 use serde::Serialize;
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     hash::{Hash, Hasher},
     path::PathBuf,
 };
@@ -17,6 +18,10 @@ pub struct Preset {
     pub id: usize,
     #[serde(skip)]
     pub file_name: PathBuf,
+    #[serde(skip)]
+    pub categories: HashSet<usize>,
+    #[serde(skip)]
+    pub modes: HashSet<usize>,
 }
 
 impl Ord for Preset {

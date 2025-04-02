@@ -1,9 +1,9 @@
-mod category_node;
+mod category;
 mod paginated_result;
 mod preset;
 mod product;
 
-use category_node::CategoryNode;
+use category::{Category, Mode};
 use multi_key_map::MultiKeyMap;
 use ordered_hash_map::OrderedHashMap;
 use paginated_result::PaginatedResult;
@@ -12,16 +12,22 @@ use preset::Preset;
 use product::{Product, ProductKey};
 use rodio::{Decoder, OutputStreamBuilder, Sink};
 use rusqlite::{Connection, OpenFlags};
-use std::{collections::HashMap, fs::File, path::PathBuf, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::File,
+    path::PathBuf,
+    sync::Mutex,
+};
 use tauri::{
     Manager, State,
     async_runtime::{Sender, channel, spawn_blocking},
 };
 
 struct AppState {
+    categories: HashMap<usize, Category>,
     db_found: bool,
     loading: bool,
-    categories: CategoryNode,
+    modes: HashMap<usize, Mode>,
     products: MultiKeyMap<ProductKey, Product>,
     presets: OrderedHashMap<usize, Preset>,
     preview_sender: Sender<PathBuf>,
@@ -31,8 +37,14 @@ struct AppState {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 #[tauri::command]
-fn get_categories(state: State<'_, Mutex<AppState>>) -> CategoryNode {
-    state.lock().unwrap().categories.clone()
+fn get_categories(state: State<'_, Mutex<AppState>>) -> Vec<Category> {
+    state
+        .lock()
+        .unwrap()
+        .categories
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
 }
 
 #[tauri::command]
@@ -209,7 +221,8 @@ pub fn run() {
             app.manage(Mutex::new(AppState {
                 db_found: conn.is_some(),
                 loading: true,
-                categories: CategoryNode::new(None, ""),
+                categories: HashMap::new(),
+                modes: HashMap::new(),
                 products: MultiKeyMap::new(),
                 presets: OrderedHashMap::new(),
                 preview_sender: sender,
@@ -230,25 +243,6 @@ pub fn run() {
                         .unwrap()
                         .filter_map(|v| v.ok())
                         .collect::<Vec<_>>();
-
-                    let mut categories = CategoryNode::new(None, "");
-
-                    let mut stmt = conn
-                        .prepare("SELECT id, category, subcategory, subsubcategory FROM k_category")
-                        .unwrap();
-
-                    let mut rows = stmt.query([]).unwrap();
-
-                    while let Some(row) = rows.next().unwrap() {
-                        categories.append(
-                            Some(row.get::<usize, usize>(0).unwrap()),
-                            vec![
-                                row.get::<usize, String>(1).unwrap(),
-                                row.get::<usize, String>(2).unwrap_or("".into()),
-                                row.get::<usize, String>(3).unwrap_or("".into()),
-                            ],
-                        );
-                    }
 
                     let mut products: MultiKeyMap<ProductKey, Product> = MultiKeyMap::new();
 
@@ -331,6 +325,8 @@ FROM k_sound_info"
                                     .name
                                     .clone(),
                                 file_name: PathBuf::from(&row.get::<usize, String>(5).unwrap()),
+                                categories: HashSet::new(),
+                                modes: HashSet::new(),
                             })
                         })
                         .unwrap()
@@ -343,10 +339,87 @@ FROM k_sound_info"
                         presets.insert(p.id, p);
                     });
 
+                    let mut categories: HashMap<usize, Category> = HashMap::new();
+
+                    let mut stmt = conn
+                        .prepare("SELECT id, category, subcategory, subsubcategory FROM k_category")
+                        .unwrap();
+
+                    let mut rows = stmt.query([]).unwrap();
+
+                    while let Some(row) = rows.next().unwrap() {
+                        categories.insert(
+                            row.get::<usize, usize>(0).unwrap(),
+                            Category {
+                                id: row.get::<usize, usize>(0).unwrap(),
+                                name: row.get::<usize, String>(1).unwrap(),
+                                subcategory: row.get::<usize, String>(2).unwrap_or("".into()),
+                                subsubcategory: row.get::<usize, String>(3).unwrap_or("".into()),
+                                presets: HashSet::new(),
+                            },
+                        );
+                    }
+
+                    let mut stmt = conn
+                        .prepare("SELECT sound_info_id, category_id FROM k_sound_info_category")
+                        .unwrap();
+
+                    let mut rows = stmt.query([]).unwrap();
+
+                    while let Some(row) = rows.next().unwrap() {
+                        categories
+                            .entry(row.get::<usize, usize>(1).unwrap())
+                            .and_modify(|c| {
+                                c.presets.insert(row.get::<usize, usize>(0).unwrap());
+                            });
+                        presets
+                            .get_mut(&row.get::<usize, usize>(0).unwrap())
+                            .unwrap()
+                            .categories
+                            .insert(row.get::<usize, usize>(1).unwrap());
+                    }
+
+                    let mut modes: HashMap<usize, Mode> = HashMap::new();
+
+                    let mut stmt = conn.prepare("SELECT id, name FROM k_mode").unwrap();
+
+                    let mut rows = stmt.query([]).unwrap();
+
+                    while let Some(row) = rows.next().unwrap() {
+                        modes.insert(
+                            row.get::<usize, usize>(0).unwrap(),
+                            Mode {
+                                id: row.get::<usize, usize>(0).unwrap(),
+                                name: row.get::<usize, String>(1).unwrap(),
+                                presets: HashSet::new(),
+                            },
+                        );
+                    }
+
+                    let mut stmt = conn
+                        .prepare("SELECT sound_info_id, mode_id FROM k_sound_info_mode")
+                        .unwrap();
+
+                    let mut rows = stmt.query([]).unwrap();
+
+                    while let Some(row) = rows.next().unwrap() {
+                        modes
+                            .entry(row.get::<usize, usize>(1).unwrap())
+                            .and_modify(|m| {
+                                m.presets.insert(row.get::<usize, usize>(0).unwrap());
+                            });
+                        presets
+                            .get_mut(&row.get::<usize, usize>(0).unwrap())
+                            .unwrap()
+                            .modes
+                            .insert(row.get::<usize, usize>(1).unwrap());
+                    }
+
                     let mut locked_state = state.lock().unwrap();
 
                     locked_state.vendors = vendors;
                     locked_state.categories = categories;
+                    locked_state.modes = modes;
                     locked_state.products = products;
                     locked_state.presets = presets;
                     locked_state.loading = false;
