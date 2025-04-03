@@ -23,6 +23,13 @@ interface Product {
     id: number
 }
 
+interface Category {
+    id: number
+    name: string
+    subcategory: string
+    subsubcategory: string
+}
+
 interface PaginatedResult<T> {
     results: T[]
     total: number
@@ -44,6 +51,10 @@ function Home() {
     const [preset, setSelectedPreset] = useState<PresetOption | undefined>(
         undefined,
     )
+    const [categories, setCategories] = useState<Map<number, Category>>(
+        new Map(),
+    )
+    const [selectedCategories, setSelectedCategories] = useState<number[]>([])
 
     useEffect(() => {
         ;(async () => {
@@ -69,13 +80,31 @@ function Home() {
                         (
                             (await invoke("get_products", {
                                 vendors: selectedVendors,
+                                categories: selectedCategories,
                             })) as Product[]
                         ).map((p) => [p.id, p]),
                     ),
                 )
+                setCategories(
+                    new Map(
+                        (
+                            (await invoke("get_categories", {
+                                vendors: selectedVendors,
+                                products: selectedProducts,
+                            })) as Category[]
+                        ).map((c) => [c.id, c]),
+                    ),
+                )
             }
         })()
-    }, [loading, selectedVendors, setProducts])
+    }, [
+        loading,
+        selectedCategories,
+        selectedProducts,
+        selectedVendors,
+        setCategories,
+        setProducts,
+    ])
 
     return loading ? (
         <p>Loading Komplete Kontrol data, please wait...</p>
@@ -180,7 +209,11 @@ function Home() {
             </Accordion>
             <Select
                 closeMenuOnSelect={false}
-                cacheUniqs={[selectedProducts, selectedVendors]}
+                cacheUniqs={[
+                    selectedCategories,
+                    selectedProducts,
+                    selectedVendors,
+                ]}
                 value={preset}
                 isMulti={false}
                 isSearchable={true}
@@ -188,6 +221,7 @@ function Home() {
                     let res = (await invoke("get_presets", {
                         vendors: selectedVendors,
                         products: selectedProducts,
+                        categories: selectedCategories,
                         offset: loadedOptions.length,
                         limit: PAGE_SIZE,
                     })) as PaginatedResult<Preset>

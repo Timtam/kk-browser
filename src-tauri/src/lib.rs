@@ -37,12 +37,27 @@ struct AppState {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 #[tauri::command]
-fn get_categories(state: State<'_, Mutex<AppState>>) -> Vec<Category> {
+fn get_categories(
+    state: State<'_, Mutex<AppState>>,
+    vendors: Vec<String>,
+    products: Vec<usize>,
+) -> Vec<Category> {
+    let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
+    let state = state.lock().unwrap();
+
     state
-        .lock()
-        .unwrap()
         .categories
         .values()
+        .filter(|c| {
+            (vendors.is_empty()
+                || c.presets
+                    .iter()
+                    .any(|p| vendors.contains(&state.presets.get(p).unwrap().vendor)))
+                && (products.is_empty()
+                    || c.presets
+                        .iter()
+                        .any(|p| products.contains(&state.presets.get(p).unwrap().product_id)))
+        })
         .cloned()
         .collect::<Vec<_>>()
 }
@@ -52,6 +67,7 @@ async fn get_presets(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     products: Vec<usize>,
+    categories: Vec<usize>,
     offset: usize,
     limit: usize,
 ) -> Result<PaginatedResult<Preset>, ()> {
@@ -64,6 +80,7 @@ async fn get_presets(
         .filter(|p| {
             (vendors.is_empty() || vendors.contains(&p.vendor))
                 && (products.is_empty() || products.contains(&p.product_id))
+                && (categories.is_empty() || categories.iter().any(|c| p.categories.contains(c)))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -90,13 +107,21 @@ async fn get_presets(
 async fn get_products(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
+    categories: Vec<usize>,
 ) -> Result<Vec<Product>, ()> {
     let state = state.lock().unwrap();
 
     let mut p: Vec<Product> = state
         .products
         .values()
-        .filter(|p| vendors.is_empty() || vendors.contains(&p.vendor))
+        .filter(|p| {
+            (vendors.is_empty() || vendors.contains(&p.vendor))
+                && (categories.is_empty()
+                    || state
+                        .presets
+                        .values()
+                        .any(|p| p.categories.iter().any(|c| categories.contains(c))))
+        })
         .cloned()
         .collect::<Vec<_>>();
 
