@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     hash::{Hash, Hasher},
 };
 
@@ -19,6 +20,8 @@ pub struct Product {
     pub vendor: String,
     #[serde(skip)]
     pub upid: String,
+    #[serde(skip)]
+    pub presets: HashSet<usize>,
 }
 
 impl Ord for Product {

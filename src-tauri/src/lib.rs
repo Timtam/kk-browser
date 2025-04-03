@@ -24,7 +24,7 @@ use tauri::{
 };
 
 struct AppState {
-    categories: HashMap<usize, Category>,
+    categories: OrderedHashMap<usize, Category>,
     db_found: bool,
     loading: bool,
     modes: HashMap<usize, Mode>,
@@ -117,10 +117,11 @@ async fn get_products(
         .filter(|p| {
             (vendors.is_empty() || vendors.contains(&p.vendor))
                 && (categories.is_empty()
-                    || state
-                        .presets
-                        .values()
-                        .any(|p| p.categories.iter().any(|c| categories.contains(c))))
+                    || categories.iter().any(|c| {
+                        p.presets
+                            .iter()
+                            .any(|pr| state.presets.get(pr).unwrap().categories.contains(c))
+                    }))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -246,7 +247,7 @@ pub fn run() {
             app.manage(Mutex::new(AppState {
                 db_found: conn.is_some(),
                 loading: true,
-                categories: HashMap::new(),
+                categories: OrderedHashMap::new(),
                 modes: HashMap::new(),
                 products: MultiKeyMap::new(),
                 presets: OrderedHashMap::new(),
@@ -322,6 +323,7 @@ SELECT DISTINCT content_path_id, vendor FROM k_sound_info"
                                 vendor: row.get::<usize, String>(1).unwrap_or("".into()),
                                 content_dir: map.get(&id).unwrap().0.clone(),
                                 upid: map.get(&id).unwrap().2.clone(),
+                                presets: HashSet::new(),
                             },
                         );
                     }
@@ -361,29 +363,39 @@ FROM k_sound_info"
                     p.sort();
 
                     p.into_iter().for_each(|p| {
+                        products
+                            .get_mut(&p.product_id)
+                            .unwrap()
+                            .presets
+                            .insert(p.id);
                         presets.insert(p.id, p);
                     });
 
-                    let mut categories: HashMap<usize, Category> = HashMap::new();
+                    let mut categories: OrderedHashMap<usize, Category> = OrderedHashMap::new();
 
                     let mut stmt = conn
                         .prepare("SELECT id, category, subcategory, subsubcategory FROM k_category")
                         .unwrap();
 
-                    let mut rows = stmt.query([]).unwrap();
-
-                    while let Some(row) = rows.next().unwrap() {
-                        categories.insert(
-                            row.get::<usize, usize>(0).unwrap(),
-                            Category {
+                    let mut c: Vec<Category> = stmt
+                        .query_map([], |row| {
+                            Ok(Category {
                                 id: row.get::<usize, usize>(0).unwrap(),
                                 name: row.get::<usize, String>(1).unwrap(),
                                 subcategory: row.get::<usize, String>(2).unwrap_or("".into()),
                                 subsubcategory: row.get::<usize, String>(3).unwrap_or("".into()),
                                 presets: HashSet::new(),
-                            },
-                        );
-                    }
+                            })
+                        })
+                        .unwrap()
+                        .filter_map(|c| c.ok())
+                        .collect::<Vec<_>>();
+
+                    c.sort();
+
+                    c.into_iter().for_each(|c| {
+                        categories.insert(c.id, c);
+                    });
 
                     let mut stmt = conn
                         .prepare("SELECT sound_info_id, category_id FROM k_sound_info_category")
@@ -393,10 +405,10 @@ FROM k_sound_info"
 
                     while let Some(row) = rows.next().unwrap() {
                         categories
-                            .entry(row.get::<usize, usize>(1).unwrap())
-                            .and_modify(|c| {
-                                c.presets.insert(row.get::<usize, usize>(0).unwrap());
-                            });
+                            .get_mut(&row.get::<usize, usize>(1).unwrap())
+                            .unwrap()
+                            .presets
+                            .insert(row.get::<usize, usize>(0).unwrap());
                         presets
                             .get_mut(&row.get::<usize, usize>(0).unwrap())
                             .unwrap()
