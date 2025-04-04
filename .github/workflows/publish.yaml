@@ -41,16 +41,19 @@ jobs:
                   # prerelease: false
                   # compile a universal binary for intel + apple sillicon
                   args: ${{ matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || '' }}
+            - name: get tauri properties
+              id: tauri_json
+              uses: ActionsTools/read-json-action@main
+              with:
+                  file_path: "src-tauri/tauri.conf.json"
             - uses: actions/upload-artifact@v4
               if: matrix.platform == 'macos-latest'
               with:
-                  name: binaries-macos
                   path: |
-                      ${{ github.workspace }}/src-tauri/target/universal-apple-darwin/release/bundle/**/*.dmg
+                      ${{ github.workspace }}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/KK Browser_${{ steps.tauri_json.outputs.version }}_universal.dmg
 
             - uses: actions/upload-artifact@v4
               if: matrix.platform == 'windows-latest'
               with:
-                  name: binaries-windows
                   path: |
-                      ${{ github.workspace }}/src-tauri/target/release/bundle/**/*.exe
+                      ${{ github.workspace }}/src-tauri/target/release/bundle/nsis/KK Browser_${{ steps.tauri_json.outputs.version }}_x64-setup.exe
