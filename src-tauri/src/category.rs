@@ -17,7 +17,7 @@ pub struct Category {
 
 impl Category {
     pub fn get_name(&self) -> String {
-        let mut name = format!("{}", self.name);
+        let mut name = self.name.to_string();
 
         if !self.subcategory.is_empty() {
             name.push_str(&format!(" / {}", self.subcategory));

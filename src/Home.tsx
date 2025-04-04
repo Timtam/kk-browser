@@ -65,6 +65,7 @@ function Home() {
     const [showProducts, setShowProducts] = useState(false)
     const [showVendors, setShowVendors] = useState(false)
     const [showCategories, setShowCategories] = useState(false)
+    const [query, setQuery] = useState("")
 
     useEffect(() => {
         ;(async () => {
@@ -237,7 +238,7 @@ function Home() {
                 aria-expanded={false}
                 onClick={() => setShowCategories(true)}
             >
-                Categories:{" "}
+                Types:{" "}
                 {selectedCategories.length === 0
                     ? "All"
                     : joinString(
@@ -265,10 +266,10 @@ function Home() {
                 }}
             >
                 <Modal.Header closeButton closeLabel="Save">
-                    <Modal.Title>Categories</Modal.Title>
+                    <Modal.Title>Types</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
-                    <div role="list" aria-label="Categories">
+                    <div role="list" aria-label="Types">
                         {[...categories!.values()].map((c, i) => (
                             <div role="listitem">
                                 <Form.Check
@@ -307,6 +308,18 @@ function Home() {
             </Modal>
             <Select
                 closeMenuOnSelect={false}
+                inputValue={query}
+                onInputChange={(value, action) => {
+                    if (action.action === "input-change") {
+                        setQuery(value)
+                    }
+                    if (action.action === "set-value") {
+                        return query
+                    }
+                    if (action.action === "menu-close") {
+                        return action.prevInputValue
+                    }
+                }}
                 cacheUniqs={[
                     selectedCategories,
                     selectedProducts,
@@ -315,11 +328,12 @@ function Home() {
                 value={preset}
                 isMulti={false}
                 isSearchable={true}
-                loadOptions={async (_: string, loadedOptions) => {
+                loadOptions={async (query: string, loadedOptions) => {
                     let res = (await invoke("get_presets", {
                         vendors: selectedVendors,
                         products: selectedProducts,
                         categories: selectedCategories,
+                        query: query,
                         offset: loadedOptions.length,
                         limit: PAGE_SIZE,
                     })) as PaginatedResult<Preset>

@@ -68,9 +68,11 @@ async fn get_presets(
     vendors: Vec<String>,
     products: Vec<usize>,
     categories: Vec<usize>,
+    mut query: String,
     offset: usize,
     limit: usize,
 ) -> Result<PaginatedResult<Preset>, ()> {
+    query = query.to_lowercase();
     let products: Vec<ProductKey> = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
     let state = state.lock().unwrap();
 
@@ -81,6 +83,9 @@ async fn get_presets(
             (vendors.is_empty() || vendors.contains(&p.vendor))
                 && (products.is_empty() || products.contains(&p.product_id))
                 && (categories.is_empty() || categories.iter().any(|c| p.categories.contains(c)))
+                && (query.is_empty()
+                    || p.name.to_lowercase().contains(&query)
+                    || p.comment.to_lowercase().contains(&query))
         })
         .cloned()
         .collect::<Vec<_>>();
