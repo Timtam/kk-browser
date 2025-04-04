@@ -138,6 +138,9 @@ function Home() {
                     <Modal.Title>Vendors</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
+                    <Button onClick={() => setSelectedVendors([])}>
+                        Deselect all
+                    </Button>
                     <div role="list" aria-label="Vendors">
                         {vendors!
                             .filter(
@@ -204,6 +207,9 @@ function Home() {
                     <Modal.Title>Products</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
+                    <Button onClick={() => setSelectedProducts([])}>
+                        Deselect all
+                    </Button>
                     <div role="list" aria-label="Products">
                         {[...products!.values()].map((p, i) => (
                             <div role="listitem">
@@ -269,6 +275,9 @@ function Home() {
                     <Modal.Title>Types</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
+                    <Button onClick={() => setSelectedCategories([])}>
+                        Deselect all
+                    </Button>
                     <div role="list" aria-label="Types">
                         {[...categories!.values()].map((c, i) => (
                             <div role="listitem">
