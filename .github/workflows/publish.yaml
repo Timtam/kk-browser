@@ -47,12 +47,14 @@ jobs:
               with:
                   file_path: "src-tauri/tauri.conf.json"
             - uses: actions/upload-artifact@v4
+              name: Macos
               if: matrix.platform == 'macos-latest'
               with:
                   path: |
                       ${{ github.workspace }}/src-tauri/target/universal-apple-darwin/release/bundle/dmg/KK Browser_${{ steps.tauri_json.outputs.version }}_universal.dmg
 
             - uses: actions/upload-artifact@v4
+              name: Windows
               if: matrix.platform == 'windows-latest'
               with:
                   path: |
