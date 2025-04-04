@@ -27,7 +27,7 @@ struct AppState {
     categories: OrderedHashMap<usize, Category>,
     db_found: bool,
     loading: bool,
-    modes: HashMap<usize, Mode>,
+    modes: OrderedHashMap<usize, Mode>,
     products: MultiKeyMap<ProductKey, Product>,
     presets: OrderedHashMap<usize, Preset>,
     preview_sender: Sender<PathBuf>,
@@ -41,6 +41,7 @@ fn get_categories(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     products: Vec<usize>,
+    modes: Vec<usize>,
 ) -> Vec<Category> {
     let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
     let state = state.lock().unwrap();
@@ -57,6 +58,45 @@ fn get_categories(
                     || c.presets
                         .iter()
                         .any(|p| products.contains(&state.presets.get(p).unwrap().product_id)))
+                && (modes.is_empty()
+                    || c.presets.iter().any(|p| {
+                        modes
+                            .iter()
+                            .any(|m| state.presets.get(p).unwrap().modes.contains(m))
+                    }))
+        })
+        .cloned()
+        .collect::<Vec<_>>()
+}
+
+#[tauri::command]
+fn get_modes(
+    state: State<'_, Mutex<AppState>>,
+    vendors: Vec<String>,
+    products: Vec<usize>,
+    categories: Vec<usize>,
+) -> Vec<Mode> {
+    let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
+    let state = state.lock().unwrap();
+
+    state
+        .modes
+        .values()
+        .filter(|m| {
+            (vendors.is_empty()
+                || m.presets
+                    .iter()
+                    .any(|p| vendors.contains(&state.presets.get(p).unwrap().vendor)))
+                && (products.is_empty()
+                    || m.presets
+                        .iter()
+                        .any(|p| products.contains(&state.presets.get(p).unwrap().product_id)))
+                && (categories.is_empty()
+                    || m.presets.iter().any(|p| {
+                        categories
+                            .iter()
+                            .any(|c| state.presets.get(p).unwrap().categories.contains(c))
+                    }))
         })
         .cloned()
         .collect::<Vec<_>>()
@@ -68,6 +108,7 @@ async fn get_presets(
     vendors: Vec<String>,
     products: Vec<usize>,
     categories: Vec<usize>,
+    modes: Vec<usize>,
     mut query: String,
     offset: usize,
     limit: usize,
@@ -83,6 +124,7 @@ async fn get_presets(
             (vendors.is_empty() || vendors.contains(&p.vendor))
                 && (products.is_empty() || products.contains(&p.product_id))
                 && (categories.is_empty() || categories.iter().any(|c| p.categories.contains(c)))
+                && (modes.is_empty() || modes.iter().any(|m| p.modes.contains(m)))
                 && (query.is_empty()
                     || p.name.to_lowercase().contains(&query)
                     || p.comment.to_lowercase().contains(&query))
@@ -113,6 +155,7 @@ async fn get_products(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     categories: Vec<usize>,
+    modes: Vec<usize>,
 ) -> Result<Vec<Product>, ()> {
     let state = state.lock().unwrap();
 
@@ -126,6 +169,12 @@ async fn get_products(
                         p.presets
                             .iter()
                             .any(|pr| state.presets.get(pr).unwrap().categories.contains(c))
+                    }))
+                && (modes.is_empty()
+                    || modes.iter().any(|m| {
+                        p.presets
+                            .iter()
+                            .any(|pr| state.presets.get(pr).unwrap().modes.contains(m))
                     }))
         })
         .cloned()
@@ -227,6 +276,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_found,
             get_categories,
+            get_modes,
             get_presets,
             get_products,
             get_vendors,
@@ -253,7 +303,7 @@ pub fn run() {
                 db_found: conn.is_some(),
                 loading: true,
                 categories: OrderedHashMap::new(),
-                modes: HashMap::new(),
+                modes: OrderedHashMap::new(),
                 products: MultiKeyMap::new(),
                 presets: OrderedHashMap::new(),
                 preview_sender: sender,
@@ -421,22 +471,27 @@ FROM k_sound_info"
                             .insert(row.get::<usize, usize>(1).unwrap());
                     }
 
-                    let mut modes: HashMap<usize, Mode> = HashMap::new();
+                    let mut modes: OrderedHashMap<usize, Mode> = OrderedHashMap::new();
 
                     let mut stmt = conn.prepare("SELECT id, name FROM k_mode").unwrap();
 
-                    let mut rows = stmt.query([]).unwrap();
-
-                    while let Some(row) = rows.next().unwrap() {
-                        modes.insert(
-                            row.get::<usize, usize>(0).unwrap(),
-                            Mode {
+                    let mut m: Vec<Mode> = stmt
+                        .query_map([], |row| {
+                            Ok(Mode {
                                 id: row.get::<usize, usize>(0).unwrap(),
                                 name: row.get::<usize, String>(1).unwrap(),
                                 presets: HashSet::new(),
-                            },
-                        );
-                    }
+                            })
+                        })
+                        .unwrap()
+                        .filter_map(|m| m.ok())
+                        .collect::<Vec<_>>();
+
+                    m.sort();
+
+                    m.into_iter().for_each(|m| {
+                        modes.insert(m.id, m);
+                    });
 
                     let mut stmt = conn
                         .prepare("SELECT sound_info_id, mode_id FROM k_sound_info_mode")
@@ -446,10 +501,10 @@ FROM k_sound_info"
 
                     while let Some(row) = rows.next().unwrap() {
                         modes
-                            .entry(row.get::<usize, usize>(1).unwrap())
-                            .and_modify(|m| {
-                                m.presets.insert(row.get::<usize, usize>(0).unwrap());
-                            });
+                            .get_mut(&row.get::<usize, usize>(1).unwrap())
+                            .unwrap()
+                            .presets
+                            .insert(row.get::<usize, usize>(0).unwrap());
                         presets
                             .get_mut(&row.get::<usize, usize>(0).unwrap())
                             .unwrap()

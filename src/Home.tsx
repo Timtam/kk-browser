@@ -31,6 +31,11 @@ interface Category {
     subsubcategory: string
 }
 
+interface Mode {
+    id: number
+    name: string
+}
+
 interface PaginatedResult<T> {
     results: T[]
     total: number
@@ -65,7 +70,13 @@ function Home() {
     const [showProducts, setShowProducts] = useState(false)
     const [showVendors, setShowVendors] = useState(false)
     const [showCategories, setShowCategories] = useState(false)
+    const [showModes, setShowModes] = useState(false)
     const [query, setQuery] = useState("")
+    const [modes, setModes] = useState<Map<number, Mode>>(new Map())
+    const [selectedModes, setSelectedModes] = useState<number[]>([])
+    const [temporarilySelectedModes, setTemporarilySelectedModes] = useState<
+        number[]
+    >([])
 
     useEffect(() => {
         ;(async () => {
@@ -92,6 +103,7 @@ function Home() {
                             (await invoke("get_products", {
                                 vendors: selectedVendors,
                                 categories: selectedCategories,
+                                modes: selectedModes,
                             })) as Product[]
                         ).map((p) => [p.id, p]),
                     ),
@@ -102,8 +114,20 @@ function Home() {
                             (await invoke("get_categories", {
                                 vendors: selectedVendors,
                                 products: selectedProducts,
+                                modes: selectedModes,
                             })) as Category[]
                         ).map((c) => [c.id, c]),
+                    ),
+                )
+                setModes(
+                    new Map(
+                        (
+                            (await invoke("get_modes", {
+                                vendors: selectedVendors,
+                                products: selectedProducts,
+                                categories: selectedCategories,
+                            })) as Category[]
+                        ).map((m) => [m.id, m]),
                     ),
                 )
             }
@@ -111,9 +135,11 @@ function Home() {
     }, [
         loading,
         selectedCategories,
+        selectedModes,
         selectedProducts,
         selectedVendors,
         setCategories,
+        setModes,
         setProducts,
     ])
 
@@ -138,7 +164,7 @@ function Home() {
                     <Modal.Title>Vendors</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
-                    <Button onClick={() => setSelectedVendors([])}>
+                    <Button onClick={() => setTemporarilySelectedVendors([])}>
                         Deselect all
                     </Button>
                     <div role="list" aria-label="Vendors">
@@ -207,7 +233,7 @@ function Home() {
                     <Modal.Title>Products</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
-                    <Button onClick={() => setSelectedProducts([])}>
+                    <Button onClick={() => setTemporarilySelectedProducts([])}>
                         Deselect all
                     </Button>
                     <div role="list" aria-label="Products">
@@ -275,7 +301,7 @@ function Home() {
                     <Modal.Title>Types</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
-                    <Button onClick={() => setSelectedCategories([])}>
+                    <Button onClick={() => setTemporarilySelectedCategories([])}>
                         Deselect all
                     </Button>
                     <div role="list" aria-label="Types">
@@ -315,6 +341,60 @@ function Home() {
                     </div>
                 </Modal.Body>
             </Modal>
+            <Button aria-expanded={false} onClick={() => setShowModes(true)}>
+                Characteristics:{" "}
+                {selectedModes.length === 0
+                    ? "All"
+                    : joinString(
+                          selectedModes
+                              .map((m) => modes.get(m)!.name)
+                              .sort(sorter),
+                          ", ",
+                          " and ",
+                      )}
+            </Button>
+            <Modal
+                show={showModes}
+                onHide={() => {
+                    setShowModes(false)
+                    setSelectedModes(temporarilySelectedModes)
+                }}
+            >
+                <Modal.Header closeButton closeLabel="Save">
+                    <Modal.Title>Characteristics</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Button onClick={() => setTemporarilySelectedModes([])}>
+                        Deselect all
+                    </Button>
+                    <div role="list" aria-label="Characteristics">
+                        {[...modes!.values()].map((m, i) => (
+                            <div role="listitem">
+                                <Form.Check
+                                    type="checkbox"
+                                    id={`${slugify(m.name)}-${i}`}
+                                    label={m.name}
+                                    checked={temporarilySelectedModes.includes(
+                                        m.id,
+                                    )}
+                                    onChange={() =>
+                                        temporarilySelectedModes.includes(m.id)
+                                            ? setTemporarilySelectedModes(
+                                                  temporarilySelectedModes.filter(
+                                                      (m2) => m.id !== m2,
+                                                  ),
+                                              )
+                                            : setTemporarilySelectedModes([
+                                                  ...temporarilySelectedModes,
+                                                  m.id,
+                                              ])
+                                    }
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </Modal.Body>
+            </Modal>
             <Select
                 closeMenuOnSelect={false}
                 inputValue={query}
@@ -331,6 +411,7 @@ function Home() {
                 }}
                 cacheUniqs={[
                     selectedCategories,
+                    selectedModes,
                     selectedProducts,
                     selectedVendors,
                 ]}
@@ -342,6 +423,7 @@ function Home() {
                         vendors: selectedVendors,
                         products: selectedProducts,
                         categories: selectedCategories,
+                        modes: selectedModes,
                         query: query,
                         offset: loadedOptions.length,
                         limit: PAGE_SIZE,
