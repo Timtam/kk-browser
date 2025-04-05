@@ -241,7 +241,11 @@ function Home() {
                         ? "All"
                         : joinString(
                               selectedProducts
-                                  .map((p) => products.get(p)!.name)
+                                  .map(
+                                      (p) =>
+                                          products.get(p)!.name ||
+                                          "(unnamed product)",
+                                  )
                                   .sort(sorter),
                               ", ",
                               " and ",
@@ -269,7 +273,7 @@ function Home() {
                                     <Form.Check
                                         type="checkbox"
                                         id={`${slugify(p.name)}-${i}`}
-                                        label={p.name}
+                                        label={p.name || "(unnamed product)"}
                                         checked={temporarilySelectedProducts.includes(
                                             p.id,
                                         )}
@@ -473,7 +477,7 @@ function Home() {
                         return {
                             options: res.results.map((p) => ({
                                 ...p,
-                                label: `${p.name}, ${p.comment}, ${p.product_name}`,
+                                label: `${p.name}, ${p.comment || "no description"}, ${p.product_name}`,
                             })),
                             hasMore: res.total > res.end,
                         }
