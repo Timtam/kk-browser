@@ -16,11 +16,8 @@ pub struct Preset {
     pub product_id: ProductKey,
     pub product_name: String,
     pub id: usize,
-    #[serde(skip)]
     pub file_name: PathBuf,
-    #[serde(skip)]
     pub categories: HashSet<usize>,
-    #[serde(skip)]
     pub modes: HashSet<usize>,
 }
 

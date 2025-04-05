@@ -29,6 +29,7 @@ rodio = { git = "https://github.com/RustAudio/rodio.git", default-features = fal
 multi_key_map = "0.3.0"
 natord = "1.0.9"
 ordered_hash_map = "0.4.0"
+tauri-plugin-clipboard-manager = "2"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
