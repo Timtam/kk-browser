@@ -4,10 +4,10 @@ mod preset;
 mod product;
 
 use category::{Category, Mode};
+use directories::BaseDirs;
 use multi_key_map::MultiKeyMap;
 use ordered_hash_map::OrderedHashMap;
 use paginated_result::PaginatedResult;
-use platform_dirs::AppDirs;
 use preset::Preset;
 use product::{Product, ProductKey};
 use rodio::{Decoder, OutputStreamBuilder, Sink};
@@ -305,10 +305,12 @@ fn is_loading(state: State<'_, Mutex<AppState>>) -> bool {
 }
 
 fn get_db3_path() -> PathBuf {
-    AppDirs::new(Some("Native Instruments"), true)
+    BaseDirs::new()
         .unwrap()
-        .data_dir
-        .join(PathBuf::from("Komplete Kontrol/Browser Data/komplete.db3"))
+        .data_local_dir()
+        .join(PathBuf::from(
+            "Native Instruments/Komplete Kontrol/Browser Data/komplete.db3",
+        ))
 }
 
 #[tauri::command]
