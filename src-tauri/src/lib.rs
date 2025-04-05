@@ -307,7 +307,7 @@ fn is_loading(state: State<'_, Mutex<AppState>>) -> bool {
 fn get_db3_path() -> PathBuf {
     AppDirs::new(Some("Native Instruments"), true)
         .unwrap()
-        .cache_dir
+        .data_dir
         .join(PathBuf::from("Komplete Kontrol/Browser Data/komplete.db3"))
 }
 
