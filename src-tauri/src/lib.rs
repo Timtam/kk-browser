@@ -304,6 +304,18 @@ fn is_loading(state: State<'_, Mutex<AppState>>) -> bool {
     state.lock().unwrap().loading
 }
 
+fn get_db3_path() -> PathBuf {
+    AppDirs::new(Some("Native Instruments"), true)
+        .unwrap()
+        .cache_dir
+        .join(PathBuf::from("Komplete Kontrol/Browser Data/komplete.db3"))
+}
+
+#[tauri::command]
+fn get_db_path() -> String {
+    get_db3_path().into_os_string().into_string().unwrap()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -313,6 +325,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_found,
             get_categories,
+            get_db_path,
             get_modes,
             get_presets,
             get_products,
@@ -321,11 +334,7 @@ pub fn run() {
             play_preset,
         ])
         .setup(|app| {
-            let db3_path: PathBuf = AppDirs::new(Some("Native Instruments"), true)
-                .unwrap()
-                .cache_dir
-                .join(PathBuf::from("Komplete Kontrol/Browser Data/komplete.db3"));
-
+            let db3_path: PathBuf = get_db3_path();
             let conn = Connection::open_with_flags(
                 db3_path.as_path(),
                 OpenFlags::SQLITE_OPEN_READ_ONLY
