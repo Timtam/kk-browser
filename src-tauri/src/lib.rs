@@ -186,8 +186,44 @@ async fn get_products(
 }
 
 #[tauri::command]
-fn get_vendors(state: State<'_, Mutex<AppState>>) -> Vec<String> {
-    state.lock().unwrap().vendors.clone()
+fn get_vendors(
+    state: State<'_, Mutex<AppState>>,
+    products: Vec<usize>,
+    categories: Vec<usize>,
+    modes: Vec<usize>,
+) -> Vec<String> {
+    let state = state.lock().unwrap();
+    state
+        .vendors
+        .iter()
+        .filter(|v| {
+            (products.is_empty()
+                || products
+                    .iter()
+                    .any(|p| &state.products.get(&ProductKey::Id(*p)).unwrap().vendor == *v))
+                && (categories.is_empty()
+                    || categories.iter().any(|c| {
+                        state
+                            .categories
+                            .get(c)
+                            .unwrap()
+                            .presets
+                            .iter()
+                            .any(|p| &state.presets.get(p).unwrap().vendor == *v)
+                    }))
+                && (modes.is_empty()
+                    || modes.iter().any(|m| {
+                        state
+                            .modes
+                            .get(m)
+                            .unwrap()
+                            .presets
+                            .iter()
+                            .any(|p| &state.presets.get(p).unwrap().vendor == *v)
+                    }))
+        })
+        .cloned()
+        .collect::<Vec<_>>()
 }
 
 #[tauri::command]

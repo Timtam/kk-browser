@@ -92,15 +92,21 @@ function Home() {
                     if (server_loading)
                         await new Promise((r) => setTimeout(r, 100))
                 }
-                setVendors(await invoke("get_vendors"))
                 setLoading(false)
             }
         })()
-    }, [loading, setLoading, setVendors])
+    }, [loading, setLoading])
 
     useEffect(() => {
         ;(async () => {
             if (!loading) {
+                setVendors(
+                    await invoke("get_vendors", {
+                        products: selectedProducts,
+                        categories: selectedCategories,
+                        modes: selectedModes,
+                    }),
+                )
                 setProducts(
                     new Map(
                         (
@@ -145,6 +151,7 @@ function Home() {
         setCategories,
         setModes,
         setProducts,
+        setVendors,
     ])
 
     return loading ? (
