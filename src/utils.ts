@@ -3,6 +3,7 @@ export const joinString = (
     sep: string,
     final?: string,
 ): string => {
+    if (s.length === 0) return ""
     if (!final) final = sep
 
     if (s.length === 1) return s[0]

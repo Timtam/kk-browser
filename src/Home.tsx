@@ -520,7 +520,7 @@ function Home() {
                                     .sort(sorter),
                                 ", ",
                                 " and ",
-                            )}
+                            ) || "none"}
                         </p>
                         <p>
                             Characteristics:{" "}
@@ -530,7 +530,7 @@ function Home() {
                                     .sort(sorter),
                                 ", ",
                                 " and ",
-                            )}
+                            ) || "none"}
                         </p>
                         <Button
                             onClick={async () =>
