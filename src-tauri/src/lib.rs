@@ -300,7 +300,15 @@ fn play_preset(state: State<'_, Mutex<AppState>>, preset: usize) {
     let state = state.lock().unwrap();
     let preset = state.presets.get(&preset).unwrap();
 
-    let preview_path: Option<PathBuf> = {
+    let preview_path: Option<PathBuf> = if preset
+        .file_name
+        .extension()
+        .unwrap()
+        .eq_ignore_ascii_case("wav")
+        && preset.file_name.exists()
+    {
+        Some(preset.file_name.clone())
+    } else {
         let p = preset
             .file_name
             .parent()
