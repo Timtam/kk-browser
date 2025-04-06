@@ -392,13 +392,17 @@ function Home() {
                                         bankFilter.trim() === "" ||
                                         b.entry1
                                             .toLowerCase()
-                                            .includes(bankFilter) ||
+                                            .includes(
+                                                bankFilter.toLowerCase(),
+                                            ) ||
                                         b.entry2
                                             .toLowerCase()
-                                            .includes(bankFilter) ||
+                                            .includes(
+                                                bankFilter.toLowerCase(),
+                                            ) ||
                                         b.entry3
                                             .toLowerCase()
-                                            .includes(bankFilter),
+                                            .includes(bankFilter.toLowerCase()),
                                 )
                                 .map((b, i) => (
                                     <div role="listitem">
