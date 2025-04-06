@@ -19,6 +19,7 @@ pub struct Preset {
     pub file_name: PathBuf,
     pub categories: HashSet<usize>,
     pub modes: HashSet<usize>,
+    pub bank: usize,
 }
 
 impl Ord for Preset {

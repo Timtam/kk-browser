@@ -20,6 +20,7 @@ interface Preset {
     file_name: string
     categories: number[]
     modes: number[]
+    bank: number
 }
 
 interface Product {
@@ -38,6 +39,13 @@ interface Category {
 interface Mode {
     id: number
     name: string
+}
+
+interface Bank {
+    id: number
+    entry1: string
+    entry2: string
+    entry3: string
 }
 
 interface PaginatedResult<T> {
@@ -71,10 +79,16 @@ function Home() {
     const [selectedCategories, setSelectedCategories] = useState<number[]>([])
     const [temporarilySelectedCategories, setTemporarilySelectedCategories] =
         useState<number[]>([])
+    const [banks, setBanks] = useState<Map<number, Bank>>(new Map())
+    const [selectedBanks, setSelectedBanks] = useState<number[]>([])
+    const [temporarilySelectedBanks, setTemporarilySelectedBanks] = useState<
+        number[]
+    >([])
     const [showProducts, setShowProducts] = useState(false)
     const [showVendors, setShowVendors] = useState(false)
     const [showCategories, setShowCategories] = useState(false)
     const [showModes, setShowModes] = useState(false)
+    const [showBanks, setShowBanks] = useState(false)
     const [query, setQuery] = useState("")
     const [modes, setModes] = useState<Map<number, Mode>>(new Map())
     const [selectedModes, setSelectedModes] = useState<number[]>([])
@@ -105,6 +119,7 @@ function Home() {
                         products: selectedProducts,
                         categories: selectedCategories,
                         modes: selectedModes,
+                        banks: selectedBanks,
                     }),
                 )
                 setProducts(
@@ -114,6 +129,7 @@ function Home() {
                                 vendors: selectedVendors,
                                 categories: selectedCategories,
                                 modes: selectedModes,
+                                banks: selectedBanks,
                             })) as Product[]
                         ).map((p) => [p.id, p]),
                     ),
@@ -125,6 +141,7 @@ function Home() {
                                 vendors: selectedVendors,
                                 products: selectedProducts,
                                 modes: selectedModes,
+                                banks: selectedBanks,
                             })) as Category[]
                         ).map((c) => [c.id, c]),
                     ),
@@ -136,18 +153,33 @@ function Home() {
                                 vendors: selectedVendors,
                                 products: selectedProducts,
                                 categories: selectedCategories,
-                            })) as Category[]
+                                banks: selectedBanks,
+                            })) as Mode[]
                         ).map((m) => [m.id, m]),
+                    ),
+                )
+                setBanks(
+                    new Map(
+                        (
+                            (await invoke("get_banks", {
+                                vendors: selectedVendors,
+                                products: selectedProducts,
+                                categories: selectedCategories,
+                                modes: selectedModes,
+                            })) as Bank[]
+                        ).map((b) => [b.id, b]),
                     ),
                 )
             }
         })()
     }, [
         loading,
+        selectedBanks,
         selectedCategories,
         selectedModes,
         selectedProducts,
         selectedVendors,
+        setBanks,
         setCategories,
         setModes,
         setProducts,
@@ -292,6 +324,81 @@ function Home() {
                                                           p.id,
                                                       ],
                                                   )
+                                        }
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </Modal.Body>
+                </Modal>
+                <Button
+                    aria-expanded={false}
+                    onClick={() => setShowBanks(true)}
+                >
+                    Banks:{" "}
+                    {selectedBanks.length === 0
+                        ? "All"
+                        : joinString(
+                              selectedBanks
+                                  .map((b) =>
+                                      joinString(
+                                          [
+                                              banks.get(b)!.entry1,
+                                              banks.get(b)!.entry2,
+                                              banks.get(b)!.entry3,
+                                          ].filter((b) => b !== ""),
+                                          " / ",
+                                      ),
+                                  )
+                                  .sort(sorter),
+                              ", ",
+                              " and ",
+                          )}
+                </Button>
+                <Modal
+                    show={showBanks}
+                    onHide={() => {
+                        setShowBanks(false)
+                        setSelectedBanks(temporarilySelectedBanks)
+                    }}
+                >
+                    <Modal.Header closeButton closeLabel="Save">
+                        <Modal.Title>Banks</Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        <Button onClick={() => setTemporarilySelectedBanks([])}>
+                            Deselect all
+                        </Button>
+                        <div role="list" aria-label="Banks">
+                            {[...banks!.values()].map((b, i) => (
+                                <div role="listitem">
+                                    <Form.Check
+                                        type="checkbox"
+                                        id={`${slugify(b.entry1)}-${i}`}
+                                        label={joinString(
+                                            [
+                                                b.entry1,
+                                                b.entry2,
+                                                b.entry3,
+                                            ].filter((b) => b !== ""),
+                                            " / ",
+                                        )}
+                                        checked={temporarilySelectedBanks.includes(
+                                            b.id,
+                                        )}
+                                        onChange={() =>
+                                            temporarilySelectedBanks.includes(
+                                                b.id,
+                                            )
+                                                ? setTemporarilySelectedBanks(
+                                                      temporarilySelectedBanks.filter(
+                                                          (b2) => b.id !== b2,
+                                                      ),
+                                                  )
+                                                : setTemporarilySelectedBanks([
+                                                      ...temporarilySelectedBanks,
+                                                      b.id,
+                                                  ])
                                         }
                                     />
                                 </div>
@@ -455,6 +562,7 @@ function Home() {
                         }
                     }}
                     cacheUniqs={[
+                        selectedBanks,
                         selectedCategories,
                         selectedModes,
                         selectedProducts,
@@ -469,6 +577,7 @@ function Home() {
                             products: selectedProducts,
                             categories: selectedCategories,
                             modes: selectedModes,
+                            banks: selectedBanks,
                             query: query,
                             offset: loadedOptions.length,
                             limit: PAGE_SIZE,
@@ -501,6 +610,19 @@ function Home() {
                         <h2>Preset details for {selectedPreset.name}</h2>
                         <p>Vendor: {selectedPreset.vendor}</p>
                         <p>Product: {selectedPreset.product_name}</p>
+                        <p>
+                            Bank:{" "}
+                            {selectedPreset.bank === 0
+                                ? "none"
+                                : joinString(
+                                      [
+                                          banks.get(selectedPreset.bank).entry1,
+                                          banks.get(selectedPreset.bank).entry2,
+                                          banks.get(selectedPreset.bank).entry3,
+                                      ].filter((s) => s !== ""),
+                                      " / ",
+                                  )}
+                        </p>
                         <p>
                             Types:{" "}
                             {joinString(

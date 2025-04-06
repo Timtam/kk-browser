@@ -3,7 +3,7 @@ mod paginated_result;
 mod preset;
 mod product;
 
-use category::{Category, Mode};
+use category::{Bank, Category, Mode};
 use directories::BaseDirs;
 use multi_key_map::MultiKeyMap;
 use ordered_hash_map::OrderedHashMap;
@@ -24,6 +24,7 @@ use tauri::{
 };
 
 struct AppState {
+    banks: OrderedHashMap<usize, Bank>,
     categories: OrderedHashMap<usize, Category>,
     db_found: bool,
     loading: bool,
@@ -37,16 +38,17 @@ struct AppState {
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 #[tauri::command]
-fn get_categories(
+async fn get_categories(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     products: Vec<usize>,
     modes: Vec<usize>,
-) -> Vec<Category> {
+    banks: Vec<usize>,
+) -> Result<Vec<Category>, ()> {
     let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
     let state = state.lock().unwrap();
 
-    state
+    Ok(state
         .categories
         .values()
         .filter(|c| {
@@ -64,22 +66,67 @@ fn get_categories(
                             .iter()
                             .any(|m| state.presets.get(p).unwrap().modes.contains(m))
                     }))
+                && (banks.is_empty()
+                    || c.presets
+                        .iter()
+                        .any(|p| banks.contains(&state.presets.get(p).unwrap().bank)))
         })
         .cloned()
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>())
 }
 
 #[tauri::command]
-fn get_modes(
+async fn get_banks(
+    state: State<'_, Mutex<AppState>>,
+    vendors: Vec<String>,
+    products: Vec<usize>,
+    modes: Vec<usize>,
+    categories: Vec<usize>,
+) -> Result<Vec<Bank>, ()> {
+    let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
+    let state = state.lock().unwrap();
+
+    Ok(state
+        .banks
+        .values()
+        .filter(|b| {
+            (vendors.is_empty()
+                || b.presets
+                    .iter()
+                    .any(|p| vendors.contains(&state.presets.get(p).unwrap().vendor)))
+                && (products.is_empty()
+                    || b.presets
+                        .iter()
+                        .any(|p| products.contains(&state.presets.get(p).unwrap().product_id)))
+                && (modes.is_empty()
+                    || b.presets.iter().any(|p| {
+                        modes
+                            .iter()
+                            .any(|m| state.presets.get(p).unwrap().modes.contains(m))
+                    }))
+                && (categories.is_empty()
+                    || b.presets.iter().any(|p| {
+                        categories
+                            .iter()
+                            .any(|c| state.presets.get(p).unwrap().categories.contains(c))
+                    }))
+        })
+        .cloned()
+        .collect::<Vec<_>>())
+}
+
+#[tauri::command]
+async fn get_modes(
     state: State<'_, Mutex<AppState>>,
     vendors: Vec<String>,
     products: Vec<usize>,
     categories: Vec<usize>,
-) -> Vec<Mode> {
+    banks: Vec<usize>,
+) -> Result<Vec<Mode>, ()> {
     let products = products.into_iter().map(ProductKey::Id).collect::<Vec<_>>();
     let state = state.lock().unwrap();
 
-    state
+    Ok(state
         .modes
         .values()
         .filter(|m| {
@@ -97,9 +144,13 @@ fn get_modes(
                             .iter()
                             .any(|c| state.presets.get(p).unwrap().categories.contains(c))
                     }))
+                && (banks.is_empty()
+                    || m.presets
+                        .iter()
+                        .any(|p| banks.contains(&state.presets.get(p).unwrap().bank)))
         })
         .cloned()
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>())
 }
 
 #[tauri::command]
@@ -109,6 +160,7 @@ async fn get_presets(
     products: Vec<usize>,
     categories: Vec<usize>,
     modes: Vec<usize>,
+    banks: Vec<usize>,
     mut query: String,
     offset: usize,
     limit: usize,
@@ -125,6 +177,7 @@ async fn get_presets(
                 && (products.is_empty() || products.contains(&p.product_id))
                 && (categories.is_empty() || categories.iter().any(|c| p.categories.contains(c)))
                 && (modes.is_empty() || modes.iter().any(|m| p.modes.contains(m)))
+                && (banks.is_empty() || banks.contains(&p.bank))
                 && (query.is_empty()
                     || p.name.to_lowercase().contains(&query)
                     || p.comment.to_lowercase().contains(&query))
@@ -156,6 +209,7 @@ async fn get_products(
     vendors: Vec<String>,
     categories: Vec<usize>,
     modes: Vec<usize>,
+    banks: Vec<usize>,
 ) -> Result<Vec<Product>, ()> {
     let state = state.lock().unwrap();
 
@@ -176,6 +230,10 @@ async fn get_products(
                             .iter()
                             .any(|pr| state.presets.get(pr).unwrap().modes.contains(m))
                     }))
+                && (banks.is_empty()
+                    || p.presets
+                        .iter()
+                        .any(|pr| banks.contains(&state.presets.get(pr).unwrap().bank)))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -186,14 +244,15 @@ async fn get_products(
 }
 
 #[tauri::command]
-fn get_vendors(
+async fn get_vendors(
     state: State<'_, Mutex<AppState>>,
     products: Vec<usize>,
     categories: Vec<usize>,
     modes: Vec<usize>,
-) -> Vec<String> {
+    banks: Vec<usize>,
+) -> Result<Vec<String>, ()> {
     let state = state.lock().unwrap();
-    state
+    Ok(state
         .vendors
         .iter()
         .filter(|v| {
@@ -221,9 +280,19 @@ fn get_vendors(
                             .iter()
                             .any(|p| &state.presets.get(p).unwrap().vendor == *v)
                     }))
+                && (banks.is_empty()
+                    || banks.iter().any(|b| {
+                        state
+                            .banks
+                            .get(b)
+                            .unwrap()
+                            .presets
+                            .iter()
+                            .any(|pr| &state.presets.get(pr).unwrap().vendor == *v)
+                    }))
         })
         .cloned()
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>())
 }
 
 #[tauri::command]
@@ -326,6 +395,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             db_found,
+            get_banks,
             get_categories,
             get_db_path,
             get_modes,
@@ -350,6 +420,7 @@ pub fn run() {
             app.manage(Mutex::new(AppState {
                 db_found: conn.is_some(),
                 loading: true,
+                banks: OrderedHashMap::new(),
                 categories: OrderedHashMap::new(),
                 modes: OrderedHashMap::new(),
                 products: MultiKeyMap::new(),
@@ -372,6 +443,32 @@ pub fn run() {
                         .unwrap()
                         .filter_map(|v| v.ok())
                         .collect::<Vec<_>>();
+
+                    let mut banks: OrderedHashMap<usize, Bank> = OrderedHashMap::new();
+
+                    let mut stmt = conn
+                        .prepare("SELECT id, entry1, entry2, entry3 FROM k_bank_chain")
+                        .unwrap();
+
+                    let mut b: Vec<Bank> = stmt
+                        .query_map([], |row| {
+                            Ok(Bank {
+                                id: row.get::<usize, usize>(0).unwrap(),
+                                entry1: row.get::<usize, String>(1).unwrap(),
+                                entry2: row.get::<usize, String>(2).unwrap_or("".into()),
+                                entry3: row.get::<usize, String>(3).unwrap_or("".into()),
+                                presets: HashSet::new(),
+                            })
+                        })
+                        .unwrap()
+                        .filter_map(|b| b.ok())
+                        .collect::<Vec<_>>();
+
+                    b.sort();
+
+                    b.into_iter().for_each(|b| {
+                        banks.insert(b.id, b);
+                    });
 
                     let mut products: MultiKeyMap<ProductKey, Product> = MultiKeyMap::new();
 
@@ -435,7 +532,7 @@ SELECT DISTINCT content_path_id, vendor FROM k_sound_info"
 
                     let cmd: String = "\
 SELECT \
-    id, name, vendor, comment, content_path_id, file_name \
+    id, name, vendor, comment, content_path_id, file_name, bank_chain_id \
 FROM k_sound_info"
                         .into();
 
@@ -457,6 +554,7 @@ FROM k_sound_info"
                                 file_name: PathBuf::from(&row.get::<usize, String>(5).unwrap()),
                                 categories: HashSet::new(),
                                 modes: HashSet::new(),
+                                bank: row.get::<usize, usize>(6).unwrap_or(0),
                             })
                         })
                         .unwrap()
@@ -471,6 +569,9 @@ FROM k_sound_info"
                             .unwrap()
                             .presets
                             .insert(p.id);
+                        if p.bank != 0 {
+                            banks.get_mut(&p.bank).unwrap().presets.insert(p.id);
+                        }
                         presets.insert(p.id, p);
                     });
 
@@ -563,6 +664,7 @@ FROM k_sound_info"
                     let mut locked_state = state.lock().unwrap();
 
                     locked_state.vendors = vendors;
+                    locked_state.banks = banks;
                     locked_state.categories = categories;
                     locked_state.modes = modes;
                     locked_state.products = products;
