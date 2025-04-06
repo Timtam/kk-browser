@@ -95,6 +95,7 @@ function Home() {
     const [temporarilySelectedModes, setTemporarilySelectedModes] = useState<
         number[]
     >([])
+    const [bankFilter, setBankFilter] = useState("")
 
     useEffect(() => {
         ;(async () => {
@@ -366,43 +367,75 @@ function Home() {
                         <Modal.Title>Banks</Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
-                        <Button onClick={() => setTemporarilySelectedBanks([])}>
-                            Deselect all
-                        </Button>
+                        <p>
+                            <Button
+                                onClick={() => {
+                                    setBankFilter("")
+                                    setTemporarilySelectedBanks([])
+                                }}
+                            >
+                                Deselect all
+                            </Button>
+                        </p>
+                        <Form.Group controlId="BankFilter">
+                            <Form.Label>Filter</Form.Label>
+                            <Form.Control
+                                type="input"
+                                placeholder="Filter banks..."
+                                onChange={(e) => setBankFilter(e.target.value)}
+                            />
+                        </Form.Group>
                         <div role="list" aria-label="Banks">
-                            {[...banks!.values()].map((b, i) => (
-                                <div role="listitem">
-                                    <Form.Check
-                                        type="checkbox"
-                                        id={`${slugify(b.entry1)}-${i}`}
-                                        label={joinString(
-                                            [
-                                                b.entry1,
-                                                b.entry2,
-                                                b.entry3,
-                                            ].filter((b) => b !== ""),
-                                            " / ",
-                                        )}
-                                        checked={temporarilySelectedBanks.includes(
-                                            b.id,
-                                        )}
-                                        onChange={() =>
-                                            temporarilySelectedBanks.includes(
+                            {[...banks!.values()]
+                                .filter(
+                                    (b) =>
+                                        bankFilter.trim() === "" ||
+                                        b.entry1
+                                            .toLowerCase()
+                                            .includes(bankFilter) ||
+                                        b.entry2
+                                            .toLowerCase()
+                                            .includes(bankFilter) ||
+                                        b.entry3
+                                            .toLowerCase()
+                                            .includes(bankFilter),
+                                )
+                                .map((b, i) => (
+                                    <div role="listitem">
+                                        <Form.Check
+                                            type="checkbox"
+                                            id={`${slugify(b.entry1)}-${i}`}
+                                            label={joinString(
+                                                [
+                                                    b.entry1,
+                                                    b.entry2,
+                                                    b.entry3,
+                                                ].filter((b) => b !== ""),
+                                                " / ",
+                                            )}
+                                            checked={temporarilySelectedBanks.includes(
                                                 b.id,
-                                            )
-                                                ? setTemporarilySelectedBanks(
-                                                      temporarilySelectedBanks.filter(
-                                                          (b2) => b.id !== b2,
-                                                      ),
-                                                  )
-                                                : setTemporarilySelectedBanks([
-                                                      ...temporarilySelectedBanks,
-                                                      b.id,
-                                                  ])
-                                        }
-                                    />
-                                </div>
-                            ))}
+                                            )}
+                                            onChange={() =>
+                                                temporarilySelectedBanks.includes(
+                                                    b.id,
+                                                )
+                                                    ? setTemporarilySelectedBanks(
+                                                          temporarilySelectedBanks.filter(
+                                                              (b2) =>
+                                                                  b.id !== b2,
+                                                          ),
+                                                      )
+                                                    : setTemporarilySelectedBanks(
+                                                          [
+                                                              ...temporarilySelectedBanks,
+                                                              b.id,
+                                                          ],
+                                                      )
+                                            }
+                                        />
+                                    </div>
+                                ))}
                         </div>
                     </Modal.Body>
                 </Modal>
@@ -616,9 +649,12 @@ function Home() {
                                 ? "none"
                                 : joinString(
                                       [
-                                          banks.get(selectedPreset.bank).entry1,
-                                          banks.get(selectedPreset.bank).entry2,
-                                          banks.get(selectedPreset.bank).entry3,
+                                          banks.get(selectedPreset.bank)!
+                                              .entry1,
+                                          banks.get(selectedPreset.bank)!
+                                              .entry2,
+                                          banks.get(selectedPreset.bank)!
+                                              .entry3,
                                       ].filter((s) => s !== ""),
                                       " / ",
                                   )}
